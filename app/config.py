@@ -13,6 +13,7 @@ class Settings(BaseModel):
     session_secret: str = os.getenv("SESSION_SECRET", "change-me-on-device")
     enable_rtsp_push: bool = os.getenv("ENABLE_RTSP_PUSH", "0") == "1"
     mediamtx_host: str = os.getenv("MEDIAMTX_HOST", "127.0.0.1")
+    rtsp_public_host: str = os.getenv("RTSP_PUBLIC_HOST", os.getenv("MEDIAMTX_HOST", "127.0.0.1"))
     mediamtx_port: int = int(os.getenv("MEDIAMTX_PORT", "8554"))
     stream_count: int = 4
     frame_width: int = int(os.getenv("FRAME_WIDTH", "1280"))

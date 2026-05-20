@@ -41,7 +41,7 @@ class StreamManager:
             frames=state.frames,
             last_error=state.last_error,
             browser_url=f"/api/video/{stream_id}",
-            rtsp_url=f"rtsp://{settings.mediamtx_host}:{settings.mediamtx_port}/stream/{stream_id}",
+            rtsp_url=f"rtsp://{settings.rtsp_public_host}:{settings.mediamtx_port}/stream/{stream_id}",
         )
 
     def close(self) -> None:

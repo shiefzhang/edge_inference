@@ -76,6 +76,15 @@ td.actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .model-function-table td { vertical-align: middle; }
 .cell-id, .cell-name, .cell-entry { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell-config code { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; font-size: 12px; color: #24313f; }
+.history-log-table { table-layout: fixed; min-width: 900px; }
+.history-log-table th:nth-child(1), .history-log-table .cell-time { width: 180px; }
+.history-log-table th:nth-child(2) { width: 100px; }
+.history-log-table th:nth-child(3) { width: 100px; }
+.history-log-table th:nth-child(4) { width: 220px; }
+.history-log-table th:nth-child(5) { width: 80px; }
+.history-log-table .cell-message { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result { display: inline-block; min-width: 44px; padding: 3px 8px; border-radius: 999px; text-align: center; background: #e3f6ed; color: var(--ok); font-size: 12px; }
+.result.failed { background: #fde8e8; color: var(--danger); }
 .settings-list { padding: 6px 18px; }
 .settings-list div { padding: 16px 0; border-bottom: 1px solid var(--line); }
 .settings-list div:last-child { border-bottom: 0; }

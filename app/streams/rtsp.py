@@ -45,6 +45,8 @@ class RtspPublisher:
             "zerolatency",
             "-pix_fmt",
             "yuv420p",
+            "-rtsp_transport",
+            "tcp",
             "-f",
             "rtsp",
             self.url,

@@ -22,7 +22,9 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     settings = get_settings()
     user = store.authenticate(username, password)
     if not user:
+        store.add_history_log(username, "login", "user", username, result="failed", message="用户名或密码错误")
         return templates.TemplateResponse("login.html", {"request": request, "error": "用户名或密码错误"}, status_code=401)
+    store.add_history_log(user.username, "login", "user", user.username)
     response = RedirectResponse("/", status_code=303)
     response.set_cookie("session", create_session_token(user.username, settings.session_secret), httponly=True, samesite="lax")
     return response

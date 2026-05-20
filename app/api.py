@@ -14,6 +14,7 @@ from app.schemas import (
     AppSnapshot,
     ConnectionIn,
     ConnectionOut,
+    HistoryLogOut,
     ModelInfo,
     ModelFunctionIn,
     ModelFunctionOut,
@@ -54,6 +55,7 @@ def snapshot(request: Request, store: JsonStore = Depends(get_store), user: User
         connections=store.list_connections(),
         models=request.app.state.registry.list_models(),
         model_functions=store.list_model_functions(),
+        history_logs=store.list_history_logs(limit=50),
         streams=request.app.state.streams.statuses(),
     )
 
@@ -61,6 +63,11 @@ def snapshot(request: Request, store: JsonStore = Depends(get_store), user: User
 @router.get("/models", response_model=list[ModelInfo])
 def list_models(request: Request, user: UserOut = Depends(current_user)):
     return request.app.state.registry.list_models()
+
+
+@router.get("/history-logs", response_model=list[HistoryLogOut])
+def list_history_logs(limit: int = 200, store: JsonStore = Depends(get_store), user: UserOut = Depends(current_user)):
+    return store.list_history_logs(limit=max(1, min(limit, 500)))
 
 
 @router.get("/model-functions", response_model=list[ModelFunctionOut])
@@ -73,6 +80,7 @@ def create_model_function(data: ModelFunctionIn, request: Request, store: JsonSt
     try:
         item = store.create_model_function(data)
         request.app.state.registry.reload(store.list_model_functions())
+        store.add_history_log(user.username, "create", "model_function", item.id, message=item.name)
         return item
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -83,6 +91,7 @@ def update_model_function(function_id: str, data: ModelFunctionIn, request: Requ
     try:
         item = store.update_model_function(function_id, data)
         request.app.state.registry.reload(store.list_model_functions())
+        store.add_history_log(user.username, "update", "model_function", item.id, message=item.name)
         return item
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="model function not found") from exc
@@ -98,6 +107,7 @@ def delete_model_function(function_id: str, request: Request, store: JsonStore =
     try:
         store.delete_model_function(function_id)
         request.app.state.registry.reload(store.list_model_functions())
+        store.add_history_log(user.username, "delete", "model_function", function_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="model function not found") from exc
     return Response(status_code=204)
@@ -118,6 +128,7 @@ def upload_model_file(function_id: str, request: Request, file: UploadFile = Fil
     payload.config["model_path"] = safe_name
     item = store.update_model_function(function_id, ModelFunctionIn(**payload.model_dump()))
     request.app.state.registry.reload(store.list_model_functions())
+    store.add_history_log(user.username, "upload_pt", "model_function", function_id, message=safe_name)
     return item
 
 
@@ -137,6 +148,7 @@ def upload_model_code(function_id: str, request: Request, file: UploadFile = Fil
     try:
         item = store.update_model_function(function_id, ModelFunctionIn(**payload.model_dump()))
         request.app.state.registry.reload(store.list_model_functions())
+        store.add_history_log(user.username, "upload_code", "model_function", function_id, message=target.name)
     except Exception as exc:
         store.update_model_function(function_id, ModelFunctionIn(**definition.model_dump()))
         request.app.state.registry.reload(store.list_model_functions())
@@ -152,7 +164,9 @@ def list_users(store: JsonStore = Depends(get_store), user: UserOut = Depends(re
 @router.post("/users", response_model=UserOut)
 def create_user(data: UserCreate, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
     try:
-        return store.create_user(data)
+        created = store.create_user(data)
+        store.add_history_log(user.username, "create", "user", created.username, message=created.role.value)
+        return created
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -160,7 +174,9 @@ def create_user(data: UserCreate, store: JsonStore = Depends(get_store), user: U
 @router.patch("/users/{username}", response_model=UserOut)
 def update_user(username: str, data: UserUpdate, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
     try:
-        return store.update_user(username, data)
+        updated = store.update_user(username, data)
+        store.add_history_log(user.username, "update", "user", username, message=updated.role.value)
+        return updated
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="user not found") from exc
 
@@ -169,6 +185,7 @@ def update_user(username: str, data: UserUpdate, store: JsonStore = Depends(get_
 def delete_user(username: str, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
     try:
         store.delete_user(username)
+        store.add_history_log(user.username, "delete", "user", username)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="user not found") from exc
     except ValueError as exc:
@@ -183,13 +200,17 @@ def list_connections(store: JsonStore = Depends(get_store), user: UserOut = Depe
 
 @router.post("/connections", response_model=ConnectionOut)
 def create_connection(data: ConnectionIn, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
-    return store.create_connection(data)
+    created = store.create_connection(data)
+    store.add_history_log(user.username, "create", "connection", created.id, message=created.name)
+    return created
 
 
 @router.put("/connections/{connection_id}", response_model=ConnectionOut)
 def update_connection(connection_id: str, data: ConnectionIn, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     try:
-        return store.update_connection(connection_id, data)
+        updated = store.update_connection(connection_id, data)
+        store.add_history_log(user.username, "update", "connection", connection_id, message=updated.name)
+        return updated
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="connection not found") from exc
 
@@ -198,6 +219,7 @@ def update_connection(connection_id: str, data: ConnectionIn, store: JsonStore =
 def delete_connection(connection_id: str, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     try:
         store.delete_connection(connection_id)
+        store.add_history_log(user.username, "delete", "connection", connection_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="connection not found") from exc
     return Response(status_code=204)
@@ -208,11 +230,13 @@ def test_connection(connection_id: str, store: JsonStore = Depends(get_store), u
     connection = store.get_connection(connection_id)
     if not connection:
         raise HTTPException(status_code=404, detail="connection not found")
-    ok, message = probe_video_source(connection.source)
+    ok, message = probe_video_source(connection.source, timeout_ms=4000)
     status_value = "online" if ok else "offline"
     updated = store.set_connection_status(connection_id, status_value)
     if not ok:
+        store.add_history_log(user.username, "test", "connection", connection_id, result="failed", message=message)
         raise HTTPException(status_code=400, detail=message)
+    store.add_history_log(user.username, "test", "connection", connection_id, message=message)
     return updated
 
 
@@ -232,6 +256,7 @@ def start_stream(stream_id: int, data: StreamStartIn, request: Request, store: J
         raise HTTPException(status_code=400, detail="unknown model")
     try:
         request.app.state.streams.start(stream_id, source, model_id, data.connection_id, data.rtsp_enabled)
+        store.add_history_log(user.username, "start", "stream", str(stream_id), message=f"{source} / {model_id}")
         return request.app.state.streams.status(stream_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="stream not found") from exc
@@ -241,6 +266,7 @@ def start_stream(stream_id: int, data: StreamStartIn, request: Request, store: J
 def stop_stream(stream_id: int, request: Request, user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     try:
         request.app.state.streams.stop(stream_id)
+        request.app.state.store.add_history_log(user.username, "stop", "stream", str(stream_id))
         return request.app.state.streams.status(stream_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="stream not found") from exc
@@ -250,6 +276,7 @@ def stop_stream(stream_id: int, request: Request, user: UserOut = Depends(requir
 def switch_model(stream_id: int, data: StreamModelIn, request: Request, user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     try:
         request.app.state.streams.switch_model(stream_id, data.model_id)
+        request.app.state.store.add_history_log(user.username, "switch_model", "stream", str(stream_id), message=data.model_id)
         return request.app.state.streams.status(stream_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="stream or model not found") from exc

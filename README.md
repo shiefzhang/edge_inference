@@ -73,10 +73,17 @@ http://localhost:8000
 如需启用 RTSP 输出，请先安装并运行 MediaMTX，然后设置环境变量：
 
 ```bash
+ENABLE_RTSP_PUSH=1
 MEDIAMTX_HOST=127.0.0.1
 MEDIAMTX_PORT=8554
-ENABLE_RTSP_PUSH=1
+RTSP_PUBLIC_HOST=10.9.160.110
 ```
+
+说明：
+
+- `MEDIAMTX_HOST` 是 FFmpeg 推流到 MediaMTX 的地址。MediaMTX 和本程序在同一台盒子上时，建议保持 `127.0.0.1`。
+- `RTSP_PUBLIC_HOST` 是其他机器访问 RTSP 时使用的盒子 IP，例如 `10.9.160.110`。
+- `MEDIAMTX_PORT` 默认是 `8554`。
 
 每个运行中的通道会推送到：
 
@@ -84,6 +91,20 @@ ENABLE_RTSP_PUSH=1
 - `rtsp://<host>:8554/stream/2`
 - `rtsp://<host>:8554/stream/3`
 - `rtsp://<host>:8554/stream/4`
+
+例如盒子 IP 是 `10.9.160.110`，第一路通道的播放地址是：
+
+```text
+rtsp://10.9.160.110:8554/stream/1
+```
+
+如果其他机器打不开，请按顺序检查：
+
+1. MediaMTX 是否已启动，并监听 `0.0.0.0:8554` 或盒子内网 IP。
+2. 本程序启动前是否设置了 `ENABLE_RTSP_PUSH=1`。
+3. 对应视频通道是否已经在后台页面点击“启动”。
+4. 盒子防火墙是否放行 TCP 8554。
+5. 在盒子本机执行 `ffprobe rtsp://127.0.0.1:8554/stream/1` 是否能拉到流。
 
 ## 目录说明
 

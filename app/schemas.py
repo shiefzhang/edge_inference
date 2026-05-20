@@ -97,9 +97,21 @@ class ModelFunctionOut(ModelFunctionIn):
     pass
 
 
+class HistoryLogOut(BaseModel):
+    id: str
+    time: str
+    user: str
+    action: str
+    target_type: str
+    target_id: str = ""
+    result: str = "success"
+    message: str = ""
+
+
 class AppSnapshot(BaseModel):
     users: List[UserOut]
     connections: List[ConnectionOut]
     models: List[ModelInfo]
     model_functions: List[ModelFunctionOut]
+    history_logs: List[HistoryLogOut]
     streams: List[StreamStatus]

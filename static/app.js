@@ -1,4 +1,4 @@
-const state = { models: [], model_functions: [], connections: [], users: [], streams: [] };
+const state = { models: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [] };
 const streamDrafts = {};
 let streamControlFocused = false;
 
@@ -19,6 +19,19 @@ const api = async (url, options = {}) => {
   }
   if (response.status === 204) return null;
   return response.json();
+};
+
+const apiWithTimeout = async (url, options = {}, timeoutMs = 6000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await api(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error(`请求超时（${timeoutMs}ms）`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 const upload = async (url, field, file) => {
@@ -59,6 +72,7 @@ function render() {
   renderConnections();
   renderModelFunctions();
   renderUsers();
+  renderHistoryLogs();
   fillModelSelects();
 }
 
@@ -154,6 +168,47 @@ function renderUsers() {
   `).join("");
 }
 
+function renderHistoryLogs() {
+  const rows = byId("history-log-rows");
+  if (!rows) return;
+  rows.innerHTML = state.history_logs.map((log) => `
+    <tr>
+      <td class="cell-time" title="${log.time}">${formatTime(log.time)}</td>
+      <td>${log.user}</td>
+      <td>${actionName(log.action)}</td>
+      <td>${log.target_type}${log.target_id ? ` / ${log.target_id}` : ""}</td>
+      <td><span class="result ${log.result}">${resultName(log.result)}</span></td>
+      <td class="cell-message" title="${escapeAttr(log.message || "")}">${log.message || "-"}</td>
+    </tr>
+  `).join("");
+}
+
+function formatTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function actionName(action) {
+  return {
+    create: "新增",
+    update: "编辑",
+    delete: "删除",
+    test: "测试",
+    start: "启动",
+    stop: "停止",
+    switch_model: "切换模型",
+    upload_pt: "上传PT",
+    upload_code: "上传代码",
+    login: "登录",
+  }[action] || action;
+}
+
+function resultName(result) {
+  return result === "failed" ? "失败" : "成功";
+}
+
 function fillModelSelects() {
   document.querySelectorAll('select[name="default_model_id"]').forEach((select) => {
     const current = select.value;
@@ -207,7 +262,7 @@ document.body.addEventListener("click", async (event) => {
       target.disabled = true;
       target.textContent = "测试中";
       try {
-        await api(`/api/connections/${target.dataset.id}/test`, { method: "POST", body: "{}" });
+        await apiWithTimeout(`/api/connections/${target.dataset.id}/test`, { method: "POST", body: "{}" }, 7000);
         alert("连接测试成功");
       } catch (err) {
         await refresh();
@@ -296,6 +351,7 @@ if (byId("add-model-function")) byId("add-model-function").disabled = !canAdmin;
 byId("add-connection")?.addEventListener("click", () => openConnectionDialog());
 byId("add-user")?.addEventListener("click", () => openUserDialog());
 byId("add-model-function")?.addEventListener("click", () => openModelFunctionDialog());
+byId("refresh-logs")?.addEventListener("click", refresh);
 
 function openConnectionDialog(connection = null) {
   const form = byId("connection-form");

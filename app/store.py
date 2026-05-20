@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from app.config import get_settings
-from app.schemas import ConnectionIn, ConnectionOut, ModelFunctionIn, ModelFunctionOut, UserCreate, UserOut, UserUpdate
+from app.schemas import ConnectionIn, ConnectionOut, HistoryLogOut, ModelFunctionIn, ModelFunctionOut, UserCreate, UserOut, UserUpdate
 from app.security import hash_password, verify_password
 
 
@@ -17,7 +17,7 @@ class JsonStore:
         settings = get_settings()
         self.path = path or settings.data_dir / "state.json"
         self._lock = threading.RLock()
-        self._state = {"users": {}, "connections": {}, "model_functions": {}}
+        self._state = {"users": {}, "connections": {}, "model_functions": {}, "history_logs": []}
         self._load()
         self._ensure_defaults()
 
@@ -46,6 +46,7 @@ class JsonStore:
                 }
             self._state.setdefault("connections", {})
             self._state.setdefault("model_functions", {})
+            self._state.setdefault("history_logs", [])
             self._ensure_default_model_functions()
             if not self._state["connections"]:
                 self.create_connection(
@@ -248,6 +249,37 @@ class JsonStore:
                 raise KeyError(function_id)
             del self._state["model_functions"][function_id]
             self._save()
+
+    def add_history_log(
+        self,
+        user: str,
+        action: str,
+        target_type: str,
+        target_id: str = "",
+        result: str = "success",
+        message: str = "",
+    ) -> HistoryLogOut:
+        with self._lock:
+            item = {
+                "id": uuid.uuid4().hex[:12],
+                "time": datetime.now(timezone.utc).isoformat(),
+                "user": user,
+                "action": action,
+                "target_type": target_type,
+                "target_id": target_id,
+                "result": result,
+                "message": message,
+            }
+            logs = self._state.setdefault("history_logs", [])
+            logs.insert(0, item)
+            del logs[500:]
+            self._save()
+            return HistoryLogOut(**item)
+
+    def list_history_logs(self, limit: int = 200) -> List[HistoryLogOut]:
+        with self._lock:
+            logs = self._state.setdefault("history_logs", [])
+            return [HistoryLogOut(**item) for item in logs[:limit]]
 
     @staticmethod
     def _user_out(user: Dict) -> UserOut:

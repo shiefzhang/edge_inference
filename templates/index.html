@@ -17,6 +17,7 @@
         <button class="nav" data-view="connections" data-short="连">连接列表</button>
         <button class="nav" data-view="models" data-short="模">模型管理</button>
         <button class="nav" data-view="users" data-short="用">用户管理</button>
+        <button class="nav" data-view="logs" data-short="日">历史日志</button>
         <button class="nav" data-view="settings" data-short="设">系统设置</button>
       </aside>
       <main class="content">
@@ -74,6 +75,17 @@
           </table>
         </section>
 
+        <section id="logs" class="view">
+          <div class="section-head">
+            <h2>历史日志</h2>
+            <button id="refresh-logs" class="ghost">刷新</button>
+          </div>
+          <table class="history-log-table">
+            <thead><tr><th>时间</th><th>用户</th><th>动作</th><th>对象</th><th>结果</th><th>说明</th></tr></thead>
+            <tbody id="history-log-rows"></tbody>
+          </table>
+        </section>
+
         <section id="settings" class="view">
           <div class="settings-list">
             <div><strong>关于</strong><span>Author: Pyrrhus · Email: zhangxuefeng@batonsoft.com</span></div>
@@ -126,6 +138,6 @@
     </dialog>
 
     <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
-    <script src="/static/app.js?v=20260519-upload-model-code"></script>
+    <script src="/static/app.js?v=20260520-history-logs"></script>
   </body>
 </html>
