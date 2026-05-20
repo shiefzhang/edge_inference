@@ -1,0 +1,417 @@
+const state = { models: [], model_functions: [], connections: [], users: [], streams: [] };
+const streamDrafts = {};
+let streamControlFocused = false;
+
+const shell = document.querySelector(".shell");
+const savedSidebar = localStorage.getItem("sidebarCollapsed");
+if (savedSidebar === "1") shell.classList.add("sidebar-collapsed");
+const canOperate = ["admin", "operator"].includes(window.CURRENT_ROLE);
+const canAdmin = window.CURRENT_ROLE === "admin";
+
+const api = async (url, options = {}) => {
+  const response = await fetch(url, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(formatApiError(detail.detail || response.statusText));
+  }
+  if (response.status === 204) return null;
+  return response.json();
+};
+
+const upload = async (url, field, file) => {
+  const formData = new FormData();
+  formData.append(field, file);
+  const response = await fetch(url, { method: "POST", body: formData });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(formatApiError(detail.detail || response.statusText));
+  }
+  return response.json();
+};
+
+function formatApiError(detail) {
+  if (Array.isArray(detail)) {
+    return detail.map((item) => `${(item.loc || []).join(".")}: ${item.msg}`).join("\n");
+  }
+  if (typeof detail === "object" && detail !== null) return JSON.stringify(detail);
+  return String(detail);
+}
+
+const modelOptions = (selected) => state.models.map((m) => `<option value="${m.id}" ${m.id === selected ? "selected" : ""}>${m.name}</option>`).join("");
+const connectionOptions = (selected) => state.connections.map((c) => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${c.name}</option>`).join("");
+const byId = (id) => document.getElementById(id);
+
+async function refresh() {
+  const snapshot = await api("/api/snapshot");
+  Object.assign(state, snapshot);
+  if (streamControlFocused || document.querySelector("dialog[open]")) return;
+  render();
+}
+
+function render() {
+  byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/4`;
+  byId("metric-models").textContent = state.models.length;
+  byId("metric-connections").textContent = state.connections.length;
+  renderStreams();
+  renderConnections();
+  renderModelFunctions();
+  renderUsers();
+  fillModelSelects();
+}
+
+function renderStreams() {
+  const grid = byId("stream-grid");
+  if (!grid) return;
+  grid.innerHTML = state.streams.map((stream) => {
+    const running = stream.running ? "running" : "";
+    const img = stream.running ? `<img src="/api/video/${stream.id}?t=${Date.now()}" alt="通道 ${stream.id}">` : "未启动";
+    const draft = streamDrafts[stream.id] || {};
+    const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
+    const selectedModel = stream.model_id || draft.model_id || state.connections.find((c) => c.id === selectedConnection)?.default_model_id || "person_detector";
+    streamDrafts[stream.id] = { connection_id: selectedConnection, model_id: selectedModel };
+    return `
+      <article class="stream-card">
+        <div class="stream-head"><h3>通道 ${stream.id}</h3><span class="status ${running}">${stream.running ? "在线" : "离线"}</span></div>
+        <div class="video-box">${img}</div>
+        <div class="stream-controls">
+          <select class="stream-connection" data-stream="${stream.id}">${connectionOptions(selectedConnection)}</select>
+          <select class="stream-model" data-stream="${stream.id}">${modelOptions(selectedModel)}</select>
+          <button data-action="start" data-stream="${stream.id}" ${canOperate ? "" : "disabled"}>启动</button>
+          <button class="ghost" data-action="stop" data-stream="${stream.id}" ${canOperate ? "" : "disabled"}>停止</button>
+        </div>
+        <div class="stream-meta">
+          FPS: ${stream.fps} · 帧数: ${stream.frames}<br>
+          RTSP: ${stream.rtsp_url}<br>
+          ${stream.last_error ? `<span class="danger-text">错误: ${stream.last_error}</span>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderConnections() {
+  const rows = byId("connection-rows");
+  if (!rows) return;
+  rows.innerHTML = state.connections.map((c) => `
+    <tr>
+      <td>${c.status}</td><td>${c.name}</td><td>${c.source}</td><td>${c.type}</td>
+      <td>${modelName(c.default_model_id)}</td><td>${c.default_stream_id}</td>
+      <td class="actions">
+        <button class="ghost" data-action="test-connection" data-id="${c.id}" ${canOperate ? "" : "disabled"}>测试</button>
+        <button class="ghost" data-action="edit-connection" data-id="${c.id}" ${canOperate ? "" : "disabled"}>编辑</button>
+        <button class="danger" data-action="delete-connection" data-id="${c.id}" ${canOperate ? "" : "disabled"}>删除</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderModelFunctions() {
+  const rows = byId("model-function-rows");
+  if (!rows) return;
+  rows.innerHTML = state.model_functions.map((m) => `
+    <tr>
+      <td class="cell-id" title="${m.id}">${m.id}</td>
+      <td class="cell-name" title="${m.name}">${m.name}</td>
+      <td class="cell-task">${m.task}</td>
+      <td class="cell-entry" title="${m.entrypoint}">${m.entrypoint}</td>
+      <td class="cell-config"><code title="${escapeAttr(JSON.stringify(m.config))}">${shortConfig(m.config)}</code></td>
+      <td class="cell-status">${m.enabled ? "启用" : "禁用"}</td>
+      <td class="actions">
+        <button class="ghost" data-action="edit-model-function" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>编辑</button>
+        <button class="ghost" data-action="upload-pt" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>上传PT</button>
+        <button class="ghost" data-action="upload-code" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>上传代码</button>
+        <button class="danger" data-action="delete-model-function" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>删除</button>
+        <input class="upload-input" data-kind="pt" data-id="${m.id}" type="file" accept=".pt" hidden>
+        <input class="upload-input" data-kind="code" data-id="${m.id}" type="file" accept=".py" hidden>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function shortConfig(config) {
+  const text = JSON.stringify(config);
+  return text.length > 120 ? `${text.slice(0, 120)}...` : text;
+}
+
+function escapeAttr(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function renderUsers() {
+  const rows = byId("user-rows");
+  if (!rows) return;
+  rows.innerHTML = state.users.map((u) => `
+    <tr>
+      <td>${u.username}</td><td>${roleName(u.role)}</td><td>${u.enabled ? "启用" : "禁用"}</td><td>${u.last_login || "-"}</td>
+      <td class="actions">
+        <button class="ghost" data-action="edit-user" data-name="${u.username}" ${canAdmin ? "" : "disabled"}>编辑</button>
+        <button class="danger" data-action="delete-user" data-name="${u.username}" ${canAdmin && u.username !== "admin" ? "" : "disabled"}>删除</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function fillModelSelects() {
+  document.querySelectorAll('select[name="default_model_id"]').forEach((select) => {
+    const current = select.value;
+    select.innerHTML = modelOptions(current);
+  });
+}
+
+function modelName(id) {
+  return state.models.find((m) => m.id === id)?.name || id;
+}
+
+function roleName(role) {
+  return { admin: "管理员", operator: "操作员", viewer: "只读" }[role] || role;
+}
+
+document.querySelectorAll(".nav").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".nav,.view").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    byId(button.dataset.view).classList.add("active");
+    byId("page-title").textContent = button.textContent;
+  });
+});
+
+byId("toggle-sidebar")?.addEventListener("click", () => {
+  shell.classList.toggle("sidebar-collapsed");
+  localStorage.setItem("sidebarCollapsed", shell.classList.contains("sidebar-collapsed") ? "1" : "0");
+});
+
+document.body.addEventListener("click", async (event) => {
+  const target = event.target;
+  const closeButton = target.closest("[data-dialog-close]");
+  if (closeButton) {
+    event.preventDefault();
+    closeButton.closest("dialog")?.close();
+    return;
+  }
+  const action = target.dataset.action;
+  try {
+    if (action === "start") {
+      const id = target.dataset.stream;
+      const card = target.closest(".stream-card");
+      const connectionId = card.querySelector(".stream-connection").value;
+      const modelId = card.querySelector(".stream-model").value;
+      await api(`/api/streams/${id}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
+    }
+    if (action === "stop") await api(`/api/streams/${target.dataset.stream}/stop`, { method: "POST", body: "{}" });
+    if (action === "edit-connection") openConnectionDialog(state.connections.find((c) => c.id === target.dataset.id));
+    if (action === "delete-connection" && confirm("删除该连接？")) await api(`/api/connections/${target.dataset.id}`, { method: "DELETE" });
+    if (action === "test-connection") {
+      target.disabled = true;
+      target.textContent = "测试中";
+      try {
+        await api(`/api/connections/${target.dataset.id}/test`, { method: "POST", body: "{}" });
+        alert("连接测试成功");
+      } catch (err) {
+        await refresh();
+        throw err;
+      } finally {
+        target.disabled = false;
+        target.textContent = "测试";
+      }
+    }
+    if (action === "edit-user") openUserDialog(state.users.find((u) => u.username === target.dataset.name));
+    if (action === "delete-user" && confirm("删除该用户？")) await api(`/api/users/${target.dataset.name}`, { method: "DELETE" });
+    if (action === "edit-model-function") openModelFunctionDialog(state.model_functions.find((m) => m.id === target.dataset.id));
+    if (action === "upload-pt") target.parentElement.querySelector(`input[data-kind="pt"][data-id="${target.dataset.id}"]`)?.click();
+    if (action === "upload-code") target.parentElement.querySelector(`input[data-kind="code"][data-id="${target.dataset.id}"]`)?.click();
+    if (action === "delete-model-function" && confirm("删除该模型函数？")) await api(`/api/model-functions/${target.dataset.id}`, { method: "DELETE" });
+    if (action) await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.body.addEventListener("change", async (event) => {
+  if (!event.target.classList.contains("upload-input")) return;
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const kind = event.target.dataset.kind;
+  const id = event.target.dataset.id;
+  try {
+    if (kind === "pt") {
+      await upload(`/api/model-functions/${id}/upload-pt`, "file", file);
+      alert("PT权重文件上传并替换成功");
+    } else {
+      await upload(`/api/model-functions/${id}/upload-code`, "file", file);
+      alert("Python逻辑代码上传并替换成功");
+    }
+    event.target.value = "";
+    await refresh();
+  } catch (err) {
+    event.target.value = "";
+    alert(err.message);
+  }
+});
+
+document.body.addEventListener("change", async (event) => {
+  if (!event.target.classList.contains("stream-model") && !event.target.classList.contains("stream-connection")) return;
+  const streamId = event.target.dataset.stream;
+  streamDrafts[streamId] = streamDrafts[streamId] || {};
+  if (event.target.classList.contains("stream-connection")) {
+    streamDrafts[streamId].connection_id = event.target.value;
+    const connection = state.connections.find((item) => item.id === event.target.value);
+    if (connection) {
+      streamDrafts[streamId].model_id = connection.default_model_id;
+      event.target.closest(".stream-controls").querySelector(".stream-model").value = connection.default_model_id;
+    }
+    return;
+  }
+  streamDrafts[streamId].model_id = event.target.value;
+  const stream = state.streams.find((s) => String(s.id) === String(streamId));
+  if (!stream?.running) return;
+  try {
+    await api(`/api/streams/${streamId}/model`, { method: "POST", body: JSON.stringify({ model_id: event.target.value }) });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+document.body.addEventListener("focusin", (event) => {
+  if (event.target.classList.contains("stream-connection") || event.target.classList.contains("stream-model")) {
+    streamControlFocused = true;
+  }
+});
+
+document.body.addEventListener("focusout", (event) => {
+  if (event.target.classList.contains("stream-connection") || event.target.classList.contains("stream-model")) {
+    setTimeout(() => {
+      streamControlFocused = false;
+      render();
+    }, 150);
+  }
+});
+
+if (byId("add-connection")) byId("add-connection").disabled = !canOperate;
+if (byId("add-user")) byId("add-user").disabled = !canAdmin;
+if (byId("add-model-function")) byId("add-model-function").disabled = !canAdmin;
+byId("add-connection")?.addEventListener("click", () => openConnectionDialog());
+byId("add-user")?.addEventListener("click", () => openUserDialog());
+byId("add-model-function")?.addEventListener("click", () => openModelFunctionDialog());
+
+function openConnectionDialog(connection = null) {
+  const form = byId("connection-form");
+  form.reset();
+  form.elements.connection_id.value = connection?.id || "";
+  form.elements.name.value = connection?.name || "";
+  form.elements.type.value = connection?.type || "rtsp";
+  form.elements.source.value = connection?.source || "";
+  form.elements.default_model_id.innerHTML = modelOptions(connection?.default_model_id || "person_detector");
+  form.elements.default_stream_id.value = connection?.default_stream_id || "1";
+  byId("connection-title").textContent = connection ? "编辑连接" : "新增连接";
+  byId("connection-dialog").showModal();
+}
+
+byId("save-connection")?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  try {
+    const form = byId("connection-form");
+    if (!form.reportValidity()) return;
+    const payload = {
+      name: form.elements.name.value,
+      type: form.elements.type.value,
+      source: form.elements.source.value,
+      default_model_id: form.elements.default_model_id.value,
+      default_stream_id: Number(form.elements.default_stream_id.value),
+    };
+    const id = form.elements.connection_id.value;
+    await api(id ? `/api/connections/${id}` : "/api/connections", { method: id ? "PUT" : "POST", body: JSON.stringify(payload) });
+    byId("connection-dialog").close();
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+function openUserDialog(user = null) {
+  const form = byId("user-form");
+  form.reset();
+  form.elements.editing.value = user?.username || "";
+  form.elements.username.value = user?.username || "";
+  form.elements.username.disabled = Boolean(user);
+  form.elements.password.required = !user;
+  form.elements.role.value = user?.role || "viewer";
+  form.elements.enabled.checked = user ? user.enabled : true;
+  byId("user-title").textContent = user ? "编辑用户" : "新增用户";
+  byId("user-dialog").showModal();
+}
+
+byId("save-user")?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  try {
+    const form = byId("user-form");
+    if (!form.reportValidity()) return;
+    const editing = form.elements.editing.value;
+    const payload = {
+      role: form.elements.role.value,
+      enabled: form.elements.enabled.checked,
+    };
+    if (form.elements.password.value) payload.password = form.elements.password.value;
+    if (editing) {
+      await api(`/api/users/${editing}`, { method: "PATCH", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/users", { method: "POST", body: JSON.stringify({ ...payload, username: form.elements.username.value, password: form.elements.password.value }) });
+    }
+    byId("user-dialog").close();
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+function openModelFunctionDialog(item = null) {
+  const form = byId("model-function-form");
+  if (!form) return;
+  form.reset();
+  form.elements.editing.value = item?.id || "";
+  form.elements.id.value = item?.id || "";
+  form.elements.name.value = item?.name || "";
+  form.elements.task.value = item?.task || "detect";
+  form.elements.entrypoint.value = item?.entrypoint || "app.model_functions:build_yolo_detector";
+  form.elements.description.value = item?.description || "";
+  form.elements.config.value = JSON.stringify(item?.config || { model_path: "yolo11n.pt", conf: 0.35 }, null, 2);
+  form.elements.enabled.checked = item ? item.enabled : true;
+  byId("model-function-title").textContent = item ? "编辑模型函数" : "新增模型函数";
+  byId("model-function-dialog").showModal();
+}
+
+byId("save-model-function")?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  try {
+    const form = byId("model-function-form");
+    if (!form.reportValidity()) return;
+    let config;
+    try {
+      config = JSON.parse(form.elements.config.value);
+    } catch {
+      alert("配置JSON格式不正确");
+      return;
+    }
+    const payload = {
+      id: form.elements.id.value,
+      name: form.elements.name.value,
+      task: form.elements.task.value,
+      entrypoint: form.elements.entrypoint.value,
+      description: form.elements.description.value,
+      config,
+      enabled: form.elements.enabled.checked,
+    };
+    const editing = form.elements.editing.value;
+    await api(editing ? `/api/model-functions/${editing}` : "/api/model-functions", { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) });
+    byId("model-function-dialog").close();
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+refresh();
+setInterval(refresh, 3000);

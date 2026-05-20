@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Edge Inference</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand-row">
+          <div class="brand">Edge Inference</div>
+          <button id="toggle-sidebar" class="sidebar-toggle" type="button" title="收起侧边栏">‹</button>
+        </div>
+        <button class="nav active" data-view="monitor" data-short="视">视频监控</button>
+        <button class="nav" data-view="connections" data-short="连">连接列表</button>
+        <button class="nav" data-view="models" data-short="模">模型管理</button>
+        <button class="nav" data-view="users" data-short="用">用户管理</button>
+        <button class="nav" data-view="settings" data-short="设">系统设置</button>
+      </aside>
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <h1 id="page-title">视频监控</h1>
+            <p id="page-subtitle">4 路视频并行推理和输出状态</p>
+          </div>
+          <form action="/logout" method="post">
+            <span class="user-badge">{{ user.username }} · {{ user.role.value }}</span>
+            <button type="submit" class="ghost">退出</button>
+          </form>
+        </header>
+
+        <section id="monitor" class="view active">
+          <div class="metrics">
+            <div><strong id="metric-online">0/4</strong><span>在线通道</span></div>
+            <div><strong id="metric-models">0</strong><span>可用模型</span></div>
+            <div><strong id="metric-connections">0</strong><span>连接配置</span></div>
+            <div><strong id="metric-role">{{ user.role.value }}</strong><span>当前角色</span></div>
+          </div>
+          <div id="stream-grid" class="stream-grid"></div>
+        </section>
+
+        <section id="connections" class="view">
+          <div class="section-head">
+            <h2>连接列表</h2>
+            <button id="add-connection">新增连接</button>
+          </div>
+          <table>
+            <thead><tr><th>状态</th><th>名称</th><th>地址/设备</th><th>类型</th><th>默认模型</th><th>默认通道</th><th>操作</th></tr></thead>
+            <tbody id="connection-rows"></tbody>
+          </table>
+        </section>
+
+        <section id="models" class="view">
+          <div class="section-head">
+            <h2>模型函数管理</h2>
+            <button id="add-model-function">新增函数</button>
+          </div>
+          <table class="model-function-table">
+            <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>Python入口</th><th>配置</th><th>状态</th><th>操作</th></tr></thead>
+            <tbody id="model-function-rows"></tbody>
+          </table>
+        </section>
+
+        <section id="users" class="view">
+          <div class="section-head">
+            <h2>用户管理</h2>
+            <button id="add-user">新增用户</button>
+          </div>
+          <table>
+            <thead><tr><th>用户名</th><th>角色</th><th>状态</th><th>最近登录</th><th>操作</th></tr></thead>
+            <tbody id="user-rows"></tbody>
+          </table>
+        </section>
+
+        <section id="settings" class="view">
+          <div class="settings-list">
+            <div><strong>关于</strong><span>Author: Pyrrhus · Email: zhangxuefeng@batonsoft.com</span></div>
+            <div><strong>RTSP 输出</strong><span>通过 FFmpeg 推送到 MediaMTX：rtsp://host:8554/stream/{id}</span></div>
+            <div><strong>浏览器预览</strong><span>通过 /api/video/{id} 的 MJPEG 流查看推理结果</span></div>
+            <div><strong>权限</strong><span>admin 可管理用户，operator 可管理连接和视频，viewer 只读</span></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="connection-dialog">
+      <form method="dialog" id="connection-form">
+        <h3 id="connection-title">新增连接</h3>
+        <input type="hidden" name="connection_id">
+        <label>名称<input name="name" required></label>
+        <label>类型<select name="type"><option value="rtsp">RTSP</option><option value="file">文件</option><option value="usb">USB</option></select></label>
+        <label>地址/设备<input name="source" required placeholder="rtsp://... / /data/test.mp4 / 0"></label>
+        <label>默认模型<select name="default_model_id"></select></label>
+        <label>默认通道<select name="default_stream_id"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="button" id="save-connection" value="default">保存</button></menu>
+      </form>
+    </dialog>
+
+    <dialog id="user-dialog">
+      <form method="dialog" id="user-form">
+        <h3 id="user-title">新增用户</h3>
+        <input type="hidden" name="editing">
+        <label>用户名<input name="username" required></label>
+        <label>密码<input name="password" type="password" minlength="4" placeholder="新增必填，编辑可留空"></label>
+        <label>角色<select name="role"><option value="admin">管理员</option><option value="operator">操作员</option><option value="viewer">只读</option></select></label>
+        <label class="check"><input name="enabled" type="checkbox" checked> 启用</label>
+        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="button" id="save-user" value="default">保存</button></menu>
+      </form>
+    </dialog>
+
+    <dialog id="model-function-dialog">
+      <form method="dialog" id="model-function-form">
+        <h3 id="model-function-title">新增模型函数</h3>
+        <input type="hidden" name="editing">
+        <label>函数ID<input name="id" required pattern="[a-zA-Z0-9_-]+"></label>
+        <label>名称<input name="name" required></label>
+        <label>类型<input name="task" required placeholder="detect / classify / custom"></label>
+        <label>Python入口<input name="entrypoint" required placeholder="app.model_functions:build_yolo_detector"></label>
+        <label>说明<input name="description" placeholder="推理链路说明"></label>
+        <label>配置JSON<textarea name="config" rows="9" required></textarea></label>
+        <label class="check"><input name="enabled" type="checkbox" checked> 启用</label>
+        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="button" id="save-model-function" value="default">保存</button></menu>
+      </form>
+    </dialog>
+
+    <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
+    <script src="/static/app.js?v=20260519-upload-model-code"></script>
+  </body>
+</html>

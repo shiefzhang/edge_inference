@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 - Edge Inference</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body class="login-body">
+    <main class="login-panel">
+      <h1>Edge Inference</h1>
+      <form method="post" action="/login" class="login-form">
+        <label>用户名<input name="username" autocomplete="username" value="admin"></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" value="admin123"></label>
+        {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+        <button type="submit">登录</button>
+      </form>
+    </main>
+  </body>
+</html>

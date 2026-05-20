@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/
+runs/
+app/user_functions/*.py
+!app/user_functions/__init__.py

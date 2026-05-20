@@ -1,0 +1,1 @@
+"""Edge inference FastAPI application."""
