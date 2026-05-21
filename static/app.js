@@ -5,6 +5,7 @@ let streamControlFocused = false;
 const shell = document.querySelector(".shell");
 const savedSidebar = localStorage.getItem("sidebarCollapsed");
 if (savedSidebar === "1") shell.classList.add("sidebar-collapsed");
+const content = document.querySelector(".content");
 const canOperate = ["admin", "operator"].includes(window.CURRENT_ROLE);
 const canAdmin = window.CURRENT_ROLE === "admin";
 
@@ -15,7 +16,8 @@ const api = async (url, options = {}) => {
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(formatApiError(detail.detail || response.statusText));
+    const message = response.status === 405 ? "接口方法不支持，请重启后端服务后再试" : formatApiError(detail.detail || response.statusText);
+    throw new Error(message);
   }
   if (response.status === 204) return null;
   return response.json();
@@ -55,6 +57,7 @@ function formatApiError(detail) {
 
 const modelOptions = (selected) => state.models.map((m) => `<option value="${m.id}" ${m.id === selected ? "selected" : ""}>${m.name}</option>`).join("");
 const connectionOptions = (selected) => state.connections.map((c) => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${c.name}</option>`).join("");
+const streamOptions = (selected) => state.streams.map((s) => `<option value="${s.id}" ${Number(selected) === s.id ? "selected" : ""}>${s.id}</option>`).join("");
 const byId = (id) => document.getElementById(id);
 
 async function refresh() {
@@ -65,15 +68,23 @@ async function refresh() {
 }
 
 function render() {
-  byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/4`;
+  byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/${state.streams.length}`;
   byId("metric-models").textContent = state.models.length;
   byId("metric-connections").textContent = state.connections.length;
+  byId("metric-role").textContent = roleName(window.CURRENT_ROLE);
   renderStreams();
   renderConnections();
   renderModelFunctions();
   renderUsers();
   renderHistoryLogs();
   fillModelSelects();
+}
+
+function applyViewTheme(view) {
+  content.classList.remove("theme-monitor", "theme-connections", "theme-models", "theme-users", "theme-logs", "theme-settings");
+  content.classList.add(`theme-${view}`);
+  shell.classList.remove("theme-monitor", "theme-connections", "theme-models", "theme-users", "theme-logs", "theme-settings");
+  shell.classList.add(`theme-${view}`);
 }
 
 function renderStreams() {
@@ -95,6 +106,7 @@ function renderStreams() {
           <select class="stream-model" data-stream="${stream.id}">${modelOptions(selectedModel)}</select>
           <button data-action="start" data-stream="${stream.id}" ${canOperate ? "" : "disabled"}>启动</button>
           <button class="ghost" data-action="stop" data-stream="${stream.id}" ${canOperate ? "" : "disabled"}>停止</button>
+          <button class="danger" data-action="delete-stream" data-stream="${stream.id}" ${canAdmin && !stream.running ? "" : "disabled"}>删除</button>
         </div>
         <div class="stream-meta">
           FPS: ${stream.fps} · 帧数: ${stream.frames}<br>
@@ -202,6 +214,8 @@ function actionName(action) {
     upload_pt: "上传PT",
     upload_code: "上传代码",
     login: "登录",
+    add_stream: "新增通道",
+    delete_stream: "删除通道",
   }[action] || action;
 }
 
@@ -224,14 +238,26 @@ function roleName(role) {
   return { admin: "管理员", operator: "操作员", viewer: "只读" }[role] || role;
 }
 
+function localizeCurrentUserBadge() {
+  const badge = document.querySelector(".user-badge");
+  if (!badge) return;
+  const username = badge.dataset.username || badge.textContent.split("·")[0].trim();
+  const role = badge.dataset.role || window.CURRENT_ROLE;
+  badge.textContent = `${username} · ${roleName(role)}`;
+}
+
 document.querySelectorAll(".nav").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll(".nav,.view").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
     byId(button.dataset.view).classList.add("active");
     byId("page-title").textContent = button.textContent;
+    applyViewTheme(button.dataset.view);
   });
 });
+
+applyViewTheme(document.querySelector(".nav.active")?.dataset.view || "monitor");
+localizeCurrentUserBadge();
 
 byId("toggle-sidebar")?.addEventListener("click", () => {
   shell.classList.toggle("sidebar-collapsed");
@@ -255,7 +281,20 @@ document.body.addEventListener("click", async (event) => {
       const modelId = card.querySelector(".stream-model").value;
       await api(`/api/streams/${id}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
     }
+    if (action === "add-stream") {
+      target.disabled = true;
+      target.textContent = "新增中";
+      try {
+        await api("/api/streams/add", { method: "POST", body: "{}" });
+      } finally {
+        target.disabled = !canAdmin;
+        target.textContent = "新增通道";
+      }
+    }
     if (action === "stop") await api(`/api/streams/${target.dataset.stream}/stop`, { method: "POST", body: "{}" });
+    if (action === "delete-stream" && confirm(`删除通道 ${target.dataset.stream}？`)) {
+      await api(`/api/streams/${target.dataset.stream}`, { method: "DELETE" });
+    }
     if (action === "edit-connection") openConnectionDialog(state.connections.find((c) => c.id === target.dataset.id));
     if (action === "delete-connection" && confirm("删除该连接？")) await api(`/api/connections/${target.dataset.id}`, { method: "DELETE" });
     if (action === "test-connection") {
@@ -348,6 +387,7 @@ document.body.addEventListener("focusout", (event) => {
 if (byId("add-connection")) byId("add-connection").disabled = !canOperate;
 if (byId("add-user")) byId("add-user").disabled = !canAdmin;
 if (byId("add-model-function")) byId("add-model-function").disabled = !canAdmin;
+if (byId("add-stream")) byId("add-stream").disabled = !canAdmin;
 byId("add-connection")?.addEventListener("click", () => openConnectionDialog());
 byId("add-user")?.addEventListener("click", () => openUserDialog());
 byId("add-model-function")?.addEventListener("click", () => openModelFunctionDialog());
@@ -361,7 +401,7 @@ function openConnectionDialog(connection = null) {
   form.elements.type.value = connection?.type || "rtsp";
   form.elements.source.value = connection?.source || "";
   form.elements.default_model_id.innerHTML = modelOptions(connection?.default_model_id || "person_detector");
-  form.elements.default_stream_id.value = connection?.default_stream_id || "1";
+  form.elements.default_stream_id.innerHTML = streamOptions(connection?.default_stream_id || 1);
   byId("connection-title").textContent = connection ? "编辑连接" : "新增连接";
   byId("connection-dialog").showModal();
 }

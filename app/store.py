@@ -17,7 +17,7 @@ class JsonStore:
         settings = get_settings()
         self.path = path or settings.data_dir / "state.json"
         self._lock = threading.RLock()
-        self._state = {"users": {}, "connections": {}, "model_functions": {}, "history_logs": []}
+        self._state = {"users": {}, "connections": {}, "model_functions": {}, "history_logs": [], "stream_count": get_settings().stream_count}
         self._load()
         self._ensure_defaults()
 
@@ -47,6 +47,7 @@ class JsonStore:
             self._state.setdefault("connections", {})
             self._state.setdefault("model_functions", {})
             self._state.setdefault("history_logs", [])
+            self._state.setdefault("stream_count", get_settings().stream_count)
             self._ensure_default_model_functions()
             if not self._state["connections"]:
                 self.create_connection(
@@ -280,6 +281,16 @@ class JsonStore:
         with self._lock:
             logs = self._state.setdefault("history_logs", [])
             return [HistoryLogOut(**item) for item in logs[:limit]]
+
+    def get_stream_count(self) -> int:
+        with self._lock:
+            return int(self._state.get("stream_count", get_settings().stream_count))
+
+    def set_stream_count(self, count: int) -> int:
+        with self._lock:
+            self._state["stream_count"] = max(1, int(count))
+            self._save()
+            return self._state["stream_count"]
 
     @staticmethod
     def _user_out(user: Dict) -> UserOut:

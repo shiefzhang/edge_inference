@@ -2,6 +2,29 @@ from functools import lru_cache
 from pathlib import Path
 from pydantic import BaseModel
 import os
+import socket
+
+
+def detect_lan_ip() -> str:
+    configured = os.getenv("RTSP_PUBLIC_HOST")
+    if configured:
+        return configured
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except OSError:
+        pass
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+        if ip and not ip.startswith("127."):
+            return ip
+    except OSError:
+        pass
+    return os.getenv("MEDIAMTX_HOST", "127.0.0.1")
 
 
 class Settings(BaseModel):
@@ -13,9 +36,9 @@ class Settings(BaseModel):
     session_secret: str = os.getenv("SESSION_SECRET", "change-me-on-device")
     enable_rtsp_push: bool = os.getenv("ENABLE_RTSP_PUSH", "0") == "1"
     mediamtx_host: str = os.getenv("MEDIAMTX_HOST", "127.0.0.1")
-    rtsp_public_host: str = os.getenv("RTSP_PUBLIC_HOST", os.getenv("MEDIAMTX_HOST", "127.0.0.1"))
+    rtsp_public_host: str = detect_lan_ip()
     mediamtx_port: int = int(os.getenv("MEDIAMTX_PORT", "8554"))
-    stream_count: int = 4
+    stream_count: int = int(os.getenv("STREAM_COUNT", "4"))
     frame_width: int = int(os.getenv("FRAME_WIDTH", "1280"))
     frame_height: int = int(os.getenv("FRAME_HEIGHT", "720"))
     frame_fps: int = int(os.getenv("FRAME_FPS", "20"))

@@ -4,10 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Edge Inference</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=20260522-nav-hover-theme">
   </head>
   <body>
-    <div class="shell">
+    <div class="shell theme-monitor">
       <aside class="sidebar">
         <div class="brand-row">
           <div class="brand">Edge Inference</div>
@@ -27,17 +27,24 @@
             <p id="page-subtitle">4 路视频并行推理和输出状态</p>
           </div>
           <form action="/logout" method="post">
-            <span class="user-badge">{{ user.username }} · {{ user.role.value }}</span>
+            <span class="user-badge" data-username="{{ user.username }}" data-role="{{ user.role.value }}">
+              {{ user.username }} ·
+              {% if user.role.value == "admin" %}管理员{% elif user.role.value == "operator" %}操作员{% elif user.role.value == "viewer" %}只读{% else %}{{ user.role.value }}{% endif %}
+            </span>
             <button type="submit" class="ghost">退出</button>
           </form>
         </header>
 
         <section id="monitor" class="view active">
+          <div class="section-head">
+            <h2>通道监控</h2>
+            <button id="add-stream" data-action="add-stream" type="button">新增通道</button>
+          </div>
           <div class="metrics">
             <div><strong id="metric-online">0/4</strong><span>在线通道</span></div>
             <div><strong id="metric-models">0</strong><span>可用模型</span></div>
             <div><strong id="metric-connections">0</strong><span>连接配置</span></div>
-            <div><strong id="metric-role">{{ user.role.value }}</strong><span>当前角色</span></div>
+            <div><strong id="metric-role">{% if user.role.value == "admin" %}管理员{% elif user.role.value == "operator" %}操作员{% elif user.role.value == "viewer" %}只读{% else %}{{ user.role.value }}{% endif %}</strong><span>当前角色</span></div>
           </div>
           <div id="stream-grid" class="stream-grid"></div>
         </section>
@@ -138,6 +145,6 @@
     </dialog>
 
     <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
-    <script src="/static/app.js?v=20260520-history-logs"></script>
+    <script src="/static/app.js?v=20260522-nav-theme"></script>
   </body>
 </html>

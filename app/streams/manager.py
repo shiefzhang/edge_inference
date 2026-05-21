@@ -9,9 +9,27 @@ from app.streams.worker import StreamWorker
 
 
 class StreamManager:
-    def __init__(self, registry: ModelRegistry) -> None:
+    def __init__(self, registry: ModelRegistry, stream_count: int | None = None) -> None:
         settings = get_settings()
-        self.workers = {stream_id: StreamWorker(stream_id, registry) for stream_id in range(1, settings.stream_count + 1)}
+        self.registry = registry
+        count = stream_count or settings.stream_count
+        self.workers = {stream_id: StreamWorker(stream_id, registry) for stream_id in range(1, count + 1)}
+
+    def add_stream(self) -> int:
+        stream_id = max(self.workers.keys(), default=0) + 1
+        self.workers[stream_id] = StreamWorker(stream_id, self.registry)
+        return stream_id
+
+    def remove_stream(self, stream_id: int) -> None:
+        worker = self._worker(stream_id)
+        state = worker.snapshot()
+        if state.running:
+            raise RuntimeError("stream is running")
+        worker.stop()
+        del self.workers[stream_id]
+
+    def stream_count(self) -> int:
+        return len(self.workers)
 
     def start(self, stream_id: int, source: str, model_id: str, connection_id: str | None = None, rtsp_enabled: bool = True) -> None:
         self._worker(stream_id).start(source, model_id, connection_id, rtsp_enabled)

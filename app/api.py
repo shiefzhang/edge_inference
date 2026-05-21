@@ -245,6 +245,32 @@ def list_streams(request: Request, user: UserOut = Depends(current_user)):
     return request.app.state.streams.statuses()
 
 
+@router.post("/streams", response_model=StreamStatus)
+def add_stream(request: Request, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
+    stream_id = request.app.state.streams.add_stream()
+    store.set_stream_count(stream_id)
+    store.add_history_log(user.username, "add_stream", "stream", str(stream_id))
+    return request.app.state.streams.status(stream_id)
+
+
+@router.post("/streams/add", response_model=StreamStatus)
+def add_stream_compat(request: Request, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
+    return add_stream(request, store, user)
+
+
+@router.delete("/streams/{stream_id}", status_code=204)
+def delete_stream(stream_id: int, request: Request, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
+    try:
+        request.app.state.streams.remove_stream(stream_id)
+        store.set_stream_count(request.app.state.streams.stream_count())
+        store.add_history_log(user.username, "delete_stream", "stream", str(stream_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="stream not found") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail="请先停止通道再删除") from exc
+    return Response(status_code=204)
+
+
 @router.post("/streams/{stream_id}/start", response_model=StreamStatus)
 def start_stream(stream_id: int, data: StreamStartIn, request: Request, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     connection = store.get_connection(data.connection_id) if data.connection_id else None

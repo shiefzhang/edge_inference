@@ -40,7 +40,7 @@ class ConnectionIn(BaseModel):
     type: ConnectionType
     source: str = Field(min_length=1, max_length=512)
     default_model_id: str = "person_detector"
-    default_stream_id: int = Field(default=1, ge=1, le=4)
+    default_stream_id: int = Field(default=1, ge=1)
 
 
 class ConnectionOut(ConnectionIn):

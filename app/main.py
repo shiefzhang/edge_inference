@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.store = JsonStore()
     app.state.registry = ModelRegistry(app.state.store.list_model_functions(), settings.models_dir)
-    app.state.streams = StreamManager(app.state.registry)
+    app.state.streams = StreamManager(app.state.registry, app.state.store.get_stream_count())
     yield
     app.state.streams.close()
     app.state.registry.close()
