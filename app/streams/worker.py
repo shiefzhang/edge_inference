@@ -149,10 +149,12 @@ class StreamWorker:
                 model_id = self.snapshot().model_id
                 if model_id:
                     try:
-                        result = self.registry.infer(model_id, frame, timeout=settings.inference_timeout_seconds)
+                        result = self.registry.infer(model_id, frame, timeout=settings.inference_timeout_seconds, stop_event=stop_event)
                         frame = result.annotated_frame if result.annotated_frame is not None else draw_result(frame, result)
                         with self._lock:
                             self.state.last_error = None
+                    except InterruptedError:
+                        break
                     except Exception as exc:
                         message = str(exc)
                         logger.exception("stream %s model %s inference failed on frame %s", self.stream_id, model_id, self.state.frames + 1)
@@ -165,16 +167,16 @@ class StreamWorker:
                 with self._lock:
                     self._latest_jpeg = jpeg
                     self.state.frames += 1
-                with self._lock:
-                    publisher = self._publisher if generation == self._run_generation else None
-                if publisher:
-                    publisher.write(frame)
                 now = time.time()
                 if now - last_tick >= 1.0:
                     with self._lock:
                         self.state.fps = (self.state.frames - last_frames) / (now - last_tick)
                         last_frames = self.state.frames
                     last_tick = now
+                with self._lock:
+                    publisher = self._publisher if generation == self._run_generation else None
+                if publisher:
+                    publisher.write(frame)
         except Exception as exc:
             logger.exception("stream %s stopped by worker error", self.stream_id)
             self._set_error(str(exc), generation)

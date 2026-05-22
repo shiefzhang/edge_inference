@@ -4,8 +4,10 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import importlib
 import importlib.util
 import sys
+import threading
+import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -20,20 +22,22 @@ class ModelRegistry:
         self.models_dir = models_dir or settings.models_dir
         self.modules: Dict[str, BaseInferenceModule] = {}
         self.executors: Dict[str, ThreadPoolExecutor] = {}
+        self._lock = threading.RLock()
         self.reload(definitions)
 
     def reload(self, definitions: List[ModelFunctionOut]) -> None:
-        for executor in self.executors.values():
-            executor.shutdown(wait=False, cancel_futures=True)
-        self.modules = {}
-        for definition in definitions:
-            if not definition.enabled:
-                continue
-            module = self._build_module(definition)
-            module.metadata.function_entrypoint = definition.entrypoint
-            module.metadata.description = definition.description
-            self.modules[module.metadata.id] = module
-        self.executors = {model_id: ThreadPoolExecutor(max_workers=1, thread_name_prefix=model_id) for model_id in self.modules}
+        with self._lock:
+            for executor in self.executors.values():
+                executor.shutdown(wait=False, cancel_futures=True)
+            self.modules = {}
+            for definition in definitions:
+                if not definition.enabled:
+                    continue
+                module = self._build_module(definition)
+                module.metadata.function_entrypoint = definition.entrypoint
+                module.metadata.description = definition.description
+                self.modules[module.metadata.id] = module
+            self.executors = {model_id: self._new_executor(model_id) for model_id in self.modules}
 
     def _build_module(self, definition: ModelFunctionOut) -> BaseInferenceModule:
         module_name, function_name = definition.entrypoint.split(":", 1)
@@ -67,16 +71,48 @@ class ModelRegistry:
     def list_models(self) -> List[ModelInfo]:
         return [ModelInfo(**module.metadata.__dict__) for module in self.modules.values()]
 
-    def infer(self, model_id: str, frame: np.ndarray, timeout: float | None = None) -> InferenceResult:
-        if model_id not in self.modules:
-            raise KeyError(model_id)
-        future = self.executors[model_id].submit(self.modules[model_id].infer, frame)
-        try:
-            return future.result(timeout=timeout)
-        except TimeoutError as exc:
-            future.cancel()
-            raise TimeoutError(f"model inference timed out after {timeout}s") from exc
+    def infer(
+        self,
+        model_id: str,
+        frame: np.ndarray,
+        timeout: float | None = None,
+        stop_event: Optional[threading.Event] = None,
+    ) -> InferenceResult:
+        with self._lock:
+            if model_id not in self.modules:
+                raise KeyError(model_id)
+            module = self.modules[model_id]
+            executor = self.executors[model_id]
+        future = executor.submit(module.infer, frame)
+        deadline = time.monotonic() + timeout if timeout else None
+        while True:
+            if stop_event and stop_event.is_set():
+                future.cancel()
+                raise InterruptedError("model inference interrupted by stream stop")
+            wait_seconds = 0.1
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    future.cancel()
+                    self._replace_executor(model_id, executor)
+                    raise TimeoutError(f"model inference timed out after {timeout}s")
+                wait_seconds = min(wait_seconds, remaining)
+            try:
+                return future.result(timeout=wait_seconds)
+            except TimeoutError:
+                continue
+
+    def _new_executor(self, model_id: str) -> ThreadPoolExecutor:
+        return ThreadPoolExecutor(max_workers=1, thread_name_prefix=model_id)
+
+    def _replace_executor(self, model_id: str, executor: ThreadPoolExecutor) -> None:
+        with self._lock:
+            if self.executors.get(model_id) is not executor:
+                return
+            executor.shutdown(wait=False, cancel_futures=True)
+            self.executors[model_id] = self._new_executor(model_id)
 
     def close(self) -> None:
-        for executor in self.executors.values():
-            executor.shutdown(wait=False, cancel_futures=True)
+        with self._lock:
+            for executor in self.executors.values():
+                executor.shutdown(wait=False, cancel_futures=True)
