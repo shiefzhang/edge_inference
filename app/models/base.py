@@ -24,6 +24,7 @@ class InferenceBox:
 class InferenceResult:
     boxes: List[InferenceBox] = field(default_factory=list)
     labels: List[str] = field(default_factory=list)
+    annotated_frame: Optional[np.ndarray] = None
 
 
 @dataclass

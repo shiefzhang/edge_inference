@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import re
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
@@ -15,6 +16,7 @@ from app.schemas import (
     ConnectionIn,
     ConnectionOut,
     HistoryLogOut,
+    ModelFileOut,
     ModelInfo,
     ModelFunctionIn,
     ModelFunctionOut,
@@ -43,6 +45,45 @@ def _save_upload(file: UploadFile, target: Path) -> None:
         shutil.copyfileobj(file.file, handle)
 
 
+def _list_model_files() -> list[ModelFileOut]:
+    settings = get_settings()
+    files = []
+    for path in sorted(settings.models_dir.glob("*.pt"), key=lambda item: item.name.lower()):
+        stat = path.stat()
+        files.append(
+            ModelFileOut(
+                name=path.name,
+                size=stat.st_size,
+                modified_time=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            )
+        )
+    return files
+
+
+def _detect_logic_function_name(path: Path) -> str | None:
+    module_stem = path.stem
+    candidates = [module_stem.removeprefix("model_"), module_stem]
+    try:
+        source = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        source = path.read_text(encoding="gbk")
+    names = set(re.findall(r"^def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(", source, flags=re.MULTILINE))
+    for candidate in candidates:
+        if candidate in names:
+            return candidate
+    return next((name for name in names if not name.startswith("_")), None)
+
+
+def _bind_primary_model_file(config: dict, file_name: str) -> None:
+    config["model_path"] = file_name
+    bindings = config.get("model_bindings")
+    if not isinstance(bindings, dict):
+        return
+    classifier_keys = [key for key in bindings if key not in {"human_model", "default_model"}]
+    if classifier_keys:
+        bindings[classifier_keys[-1]] = file_name
+
+
 @router.get("/me", response_model=UserOut)
 def me(user: UserOut = Depends(current_user)):
     return user
@@ -54,6 +95,7 @@ def snapshot(request: Request, store: JsonStore = Depends(get_store), user: User
         users=store.list_users() if user.role == Role.admin else [],
         connections=store.list_connections(),
         models=request.app.state.registry.list_models(),
+        model_files=_list_model_files(),
         model_functions=store.list_model_functions(),
         history_logs=store.list_history_logs(limit=50),
         streams=request.app.state.streams.statuses(),
@@ -63,6 +105,23 @@ def snapshot(request: Request, store: JsonStore = Depends(get_store), user: User
 @router.get("/models", response_model=list[ModelInfo])
 def list_models(request: Request, user: UserOut = Depends(current_user)):
     return request.app.state.registry.list_models()
+
+
+@router.get("/model-files", response_model=list[ModelFileOut])
+def list_model_files(user: UserOut = Depends(current_user)):
+    return _list_model_files()
+
+
+@router.post("/model-files", response_model=ModelFileOut)
+def upload_model_pt_file(file: UploadFile = File(...), store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin))):
+    if not file.filename or not file.filename.lower().endswith(".pt"):
+        raise HTTPException(status_code=400, detail="only .pt files are supported")
+    safe_name = f"{_safe_stem(Path(file.filename).stem)}.pt"
+    target = get_settings().models_dir / safe_name
+    _save_upload(file, target)
+    store.add_history_log(user.username, "upload_pt", "model_file", safe_name, message=safe_name)
+    stat = target.stat()
+    return ModelFileOut(name=target.name, size=stat.st_size, modified_time=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat())
 
 
 @router.get("/history-logs", response_model=list[HistoryLogOut])
@@ -125,7 +184,7 @@ def upload_model_file(function_id: str, request: Request, file: UploadFile = Fil
     target = settings.models_dir / safe_name
     _save_upload(file, target)
     payload = definition.model_copy(deep=True)
-    payload.config["model_path"] = safe_name
+    _bind_primary_model_file(payload.config, safe_name)
     item = store.update_model_function(function_id, ModelFunctionIn(**payload.model_dump()))
     request.app.state.registry.reload(store.list_model_functions())
     store.add_history_log(user.username, "upload_pt", "model_function", function_id, message=safe_name)
@@ -140,11 +199,17 @@ def upload_model_code(function_id: str, request: Request, file: UploadFile = Fil
     if not definition:
         raise HTTPException(status_code=404, detail="model function not found")
     settings = get_settings()
-    module_stem = _safe_stem(function_id)
-    target = settings.user_functions_dir / f"{module_stem}.py"
+    module_stem = _safe_stem(Path(file.filename).stem)
+    if not module_stem.startswith("model_"):
+        module_stem = f"model_{module_stem}"
+    target = settings.model_logic_dir / f"{module_stem}.py"
     _save_upload(file, target)
     payload = definition.model_copy(deep=True)
-    payload.entrypoint = f"app.user_functions.{module_stem}:build_model"
+    payload.entrypoint = "app.model_functions:build_func_model"
+    payload.config["logic_module"] = f"app.func.{module_stem}"
+    detected = _detect_logic_function_name(target)
+    if detected:
+        payload.config["logic_function"] = detected
     try:
         item = store.update_model_function(function_id, ModelFunctionIn(**payload.model_dump()))
         request.app.state.registry.reload(store.list_model_functions())
@@ -152,7 +217,7 @@ def upload_model_code(function_id: str, request: Request, file: UploadFile = Fil
     except Exception as exc:
         store.update_model_function(function_id, ModelFunctionIn(**definition.model_dump()))
         request.app.state.registry.reload(store.list_model_functions())
-        raise HTTPException(status_code=400, detail=f"uploaded python file must expose build_model(definition, models_dir, modules): {exc}") from exc
+        raise HTTPException(status_code=400, detail=f"uploaded python file must expose a callable model logic function: {exc}") from exc
     return item
 
 

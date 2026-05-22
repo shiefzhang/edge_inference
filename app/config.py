@@ -32,6 +32,7 @@ class Settings(BaseModel):
     base_dir: Path = Path(__file__).resolve().parent.parent
     data_dir: Path = Path(__file__).resolve().parent.parent / "data"
     models_dir: Path = Path(__file__).resolve().parent.parent / "models"
+    model_logic_dir: Path = Path(__file__).resolve().parent / "func"
     user_functions_dir: Path = Path(__file__).resolve().parent / "user_functions"
     session_secret: str = os.getenv("SESSION_SECRET", "change-me-on-device")
     enable_rtsp_push: bool = os.getenv("ENABLE_RTSP_PUSH", "0") == "1"
@@ -49,5 +50,6 @@ def get_settings() -> Settings:
     settings = Settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.models_dir.mkdir(parents=True, exist_ok=True)
+    settings.model_logic_dir.mkdir(parents=True, exist_ok=True)
     settings.user_functions_dir.mkdir(parents=True, exist_ok=True)
     return settings

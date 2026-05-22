@@ -83,6 +83,12 @@ class ModelInfo(BaseModel):
     description: Optional[str] = None
 
 
+class ModelFileOut(BaseModel):
+    name: str
+    size: int
+    modified_time: str
+
+
 class ModelFunctionIn(BaseModel):
     id: str = Field(min_length=2, max_length=64, pattern=r"^[a-zA-Z0-9_\\-]+$")
     name: str = Field(min_length=1, max_length=64)
@@ -112,6 +118,7 @@ class AppSnapshot(BaseModel):
     users: List[UserOut]
     connections: List[ConnectionOut]
     models: List[ModelInfo]
+    model_files: List[ModelFileOut]
     model_functions: List[ModelFunctionOut]
     history_logs: List[HistoryLogOut]
     streams: List[StreamStatus]

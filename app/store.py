@@ -111,6 +111,74 @@ class JsonStore:
                 },
                 description="先进行人员检测，再裁剪人框做反光衣分类",
             ),
+            ModelFunctionIn(
+                id="func_unhat",
+                name="未戴安全帽",
+                task="func",
+                entrypoint="app.model_functions:build_func_model",
+                config={
+                    "model_path": "human_hat_cls_v4_bestm.pt",
+                    "logic_module": "app.func.model_unhat",
+                    "logic_function": "unhat",
+                    "conf": 0.25,
+                    "model_bindings": {
+                        "human_model": "05person_best11m.pt",
+                        "unhat_cls_model": "human_hat_cls_v4_bestm.pt",
+                    },
+                },
+                description="调用 app/func/model_unhat.py 逻辑并绑定安全帽分类权重",
+            ),
+            ModelFunctionIn(
+                id="func_unvest",
+                name="未穿反光衣",
+                task="func",
+                entrypoint="app.model_functions:build_func_model",
+                config={
+                    "model_path": "human_vest_cls_best11m.pt",
+                    "logic_module": "app.func.model_unvest",
+                    "logic_function": "unvest",
+                    "conf": 0.25,
+                    "model_bindings": {
+                        "human_model": "05person_best11m.pt",
+                        "unvest_cls_model": "human_vest_cls_best11m.pt",
+                    },
+                },
+                description="调用 app/func/model_unvest.py 逻辑并绑定反光衣分类权重",
+            ),
+            ModelFunctionIn(
+                id="func_smoke",
+                name="人员吸烟",
+                task="func",
+                entrypoint="app.model_functions:build_func_model",
+                config={
+                    "model_path": "",
+                    "logic_module": "app.func.model_smoke",
+                    "logic_function": "smoking",
+                    "conf": 0.25,
+                    "model_bindings": {
+                        "default_model": "yolo11n.pt",
+                    },
+                },
+                enabled=False,
+                description="上传吸烟分类 .pt 后启用",
+            ),
+            ModelFunctionIn(
+                id="func_phone",
+                name="人员玩手机",
+                task="func",
+                entrypoint="app.model_functions:build_func_model",
+                config={
+                    "model_path": "",
+                    "logic_module": "app.func.model_phone",
+                    "logic_function": "phone",
+                    "conf": 0.25,
+                    "model_bindings": {
+                        "default_model": "yolo11n.pt",
+                    },
+                },
+                enabled=False,
+                description="上传玩手机分类 .pt 后启用",
+            ),
         ]
         for item in defaults:
             self._state["model_functions"].setdefault(item.id, item.model_dump())

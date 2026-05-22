@@ -1,4 +1,4 @@
-const state = { models: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [] };
+const state = { models: [], model_files: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [] };
 const streamDrafts = {};
 let streamControlFocused = false;
 
@@ -59,6 +59,8 @@ const modelOptions = (selected) => state.models.map((m) => `<option value="${m.i
 const connectionOptions = (selected) => state.connections.map((c) => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${c.name}</option>`).join("");
 const streamOptions = (selected) => state.streams.map((s) => `<option value="${s.id}" ${Number(selected) === s.id ? "selected" : ""}>${s.id}</option>`).join("");
 const byId = (id) => document.getElementById(id);
+const findStream = (id) => state.streams.find((s) => String(s.id) === String(id));
+const streamControlIsLocked = (stream) => stream?.running || !canOperate;
 
 async function refresh() {
   const snapshot = await api("/api/snapshot");
@@ -74,6 +76,7 @@ function render() {
   byId("metric-role").textContent = roleName(window.CURRENT_ROLE);
   renderStreams();
   renderConnections();
+  renderModelFiles();
   renderModelFunctions();
   renderUsers();
   renderHistoryLogs();
@@ -96,16 +99,19 @@ function renderStreams() {
     const draft = streamDrafts[stream.id] || {};
     const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
     const selectedModel = stream.model_id || draft.model_id || state.connections.find((c) => c.id === selectedConnection)?.default_model_id || "person_detector";
+    const configDisabled = streamControlIsLocked(stream) ? "disabled" : "";
+    const startDisabled = canOperate && !stream.running ? "" : "disabled";
+    const stopDisabled = canOperate && stream.running ? "" : "disabled";
     streamDrafts[stream.id] = { connection_id: selectedConnection, model_id: selectedModel };
     return `
       <article class="stream-card">
         <div class="stream-head"><h3>通道 ${stream.id}</h3><span class="status ${running}">${stream.running ? "在线" : "离线"}</span></div>
         <div class="video-box">${img}</div>
         <div class="stream-controls">
-          <select class="stream-connection" data-stream="${stream.id}">${connectionOptions(selectedConnection)}</select>
-          <select class="stream-model" data-stream="${stream.id}">${modelOptions(selectedModel)}</select>
-          <button data-action="start" data-stream="${stream.id}" ${canOperate ? "" : "disabled"}>启动</button>
-          <button class="ghost" data-action="stop" data-stream="${stream.id}" ${canOperate ? "" : "disabled"}>停止</button>
+          <select class="stream-connection" data-stream="${stream.id}" ${configDisabled}>${connectionOptions(selectedConnection)}</select>
+          <select class="stream-model" data-stream="${stream.id}" ${configDisabled}>${modelOptions(selectedModel)}</select>
+          <button data-action="start" data-stream="${stream.id}" ${startDisabled}>启动</button>
+          <button class="ghost" data-action="stop" data-stream="${stream.id}" ${stopDisabled}>停止</button>
           <button class="danger" data-action="delete-stream" data-stream="${stream.id}" ${canAdmin && !stream.running ? "" : "disabled"}>删除</button>
         </div>
         <div class="stream-meta">
@@ -134,6 +140,18 @@ function renderConnections() {
   `).join("");
 }
 
+function renderModelFiles() {
+  const rows = byId("model-file-rows");
+  if (!rows) return;
+  rows.innerHTML = state.model_files.map((file) => `
+    <tr>
+      <td class="cell-entry" title="${escapeAttr(file.name)}">${file.name}</td>
+      <td>${formatBytes(file.size)}</td>
+      <td>${formatTime(file.modified_time)}</td>
+    </tr>
+  `).join("");
+}
+
 function renderModelFunctions() {
   const rows = byId("model-function-rows");
   if (!rows) return;
@@ -155,6 +173,14 @@ function renderModelFunctions() {
       </td>
     </tr>
   `).join("");
+}
+
+function formatBytes(value) {
+  const size = Number(value || 0);
+  if (size >= 1024 * 1024 * 1024) return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
 }
 
 function shortConfig(config) {
@@ -279,6 +305,7 @@ document.body.addEventListener("click", async (event) => {
       const card = target.closest(".stream-card");
       const connectionId = card.querySelector(".stream-connection").value;
       const modelId = card.querySelector(".stream-model").value;
+      target.disabled = true;
       await api(`/api/streams/${id}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
     }
     if (action === "add-stream") {
@@ -294,7 +321,12 @@ document.body.addEventListener("click", async (event) => {
         target.textContent = "新增通道";
       }
     }
-    if (action === "stop") await api(`/api/streams/${target.dataset.stream}/stop`, { method: "POST", body: "{}" });
+    if (action === "stop") {
+      document.activeElement?.blur();
+      target.disabled = true;
+      streamControlFocused = false;
+      await api(`/api/streams/${target.dataset.stream}/stop`, { method: "POST", body: "{}" });
+    }
     if (action === "delete-stream" && confirm(`删除通道 ${target.dataset.stream}？`)) {
       await api(`/api/streams/${target.dataset.stream}`, { method: "DELETE" });
     }
@@ -351,6 +383,11 @@ document.body.addEventListener("change", async (event) => {
 document.body.addEventListener("change", async (event) => {
   if (!event.target.classList.contains("stream-model") && !event.target.classList.contains("stream-connection")) return;
   const streamId = event.target.dataset.stream;
+  const stream = findStream(streamId);
+  if (streamControlIsLocked(stream)) {
+    render();
+    return;
+  }
   streamDrafts[streamId] = streamDrafts[streamId] || {};
   if (event.target.classList.contains("stream-connection")) {
     streamDrafts[streamId].connection_id = event.target.value;
@@ -362,18 +399,10 @@ document.body.addEventListener("change", async (event) => {
     return;
   }
   streamDrafts[streamId].model_id = event.target.value;
-  const stream = state.streams.find((s) => String(s.id) === String(streamId));
-  if (!stream?.running) return;
-  try {
-    await api(`/api/streams/${streamId}/model`, { method: "POST", body: JSON.stringify({ model_id: event.target.value }) });
-    await refresh();
-  } catch (err) {
-    alert(err.message);
-  }
 });
 
 document.body.addEventListener("focusin", (event) => {
-  if (event.target.classList.contains("stream-connection") || event.target.classList.contains("stream-model")) {
+  if ((event.target.classList.contains("stream-connection") || event.target.classList.contains("stream-model")) && !event.target.disabled) {
     streamControlFocused = true;
   }
 });
@@ -390,10 +419,24 @@ document.body.addEventListener("focusout", (event) => {
 if (byId("add-connection")) byId("add-connection").disabled = !canOperate;
 if (byId("add-user")) byId("add-user").disabled = !canAdmin;
 if (byId("add-model-function")) byId("add-model-function").disabled = !canAdmin;
+if (byId("upload-model-file")) byId("upload-model-file").disabled = !canAdmin;
 if (byId("add-stream")) byId("add-stream").disabled = !canAdmin;
 byId("add-connection")?.addEventListener("click", () => openConnectionDialog());
 byId("add-user")?.addEventListener("click", () => openUserDialog());
 byId("add-model-function")?.addEventListener("click", () => openModelFunctionDialog());
+byId("upload-model-file")?.addEventListener("click", () => byId("model-file-input")?.click());
+byId("model-file-input")?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    await upload("/api/model-files", "file", file);
+    event.target.value = "";
+    await refresh();
+  } catch (err) {
+    event.target.value = "";
+    alert(err.message);
+  }
+});
 byId("refresh-logs")?.addEventListener("click", refresh);
 
 function openConnectionDialog(connection = null) {
@@ -502,16 +545,23 @@ function openUserDialog(user = null) {
 function openModelFunctionDialog(item = null) {
   const form = byId("model-function-form");
   if (!form) return;
+  const defaultConfig = {
+    model_path: "",
+    logic_module: "app.func.model_unhat",
+    logic_function: "unhat",
+    conf: 0.25,
+    model_bindings: {}
+  };
   form.reset();
   form.elements.editing.value = item?.id || "";
   form.elements.id.value = item?.id || "";
   form.elements.name.value = item?.name || "";
-  form.elements.task.value = item?.task || "detect";
-  form.elements.entrypoint.value = item?.entrypoint || "app.model_functions:build_yolo_detector";
+  form.elements.task.value = item?.task || "func";
+  form.elements.entrypoint.value = item?.entrypoint || "app.model_functions:build_func_model";
   form.elements.description.value = item?.description || "";
-  form.elements.config.value = JSON.stringify(item?.config || { model_path: "yolo11n.pt", conf: 0.35 }, null, 2);
+  form.elements.config.value = JSON.stringify(item?.config || defaultConfig, null, 2);
   form.elements.enabled.checked = item ? item.enabled : true;
-  byId("model-function-title").textContent = item ? "编辑模型函数" : "新增模型函数";
+  byId("model-function-title").textContent = item ? "编辑模型逻辑" : "新增模型逻辑";
   byId("model-function-dialog").showModal();
 }
 

@@ -95,7 +95,7 @@ class StreamWorker:
                 model_id = self.snapshot().model_id
                 if model_id:
                     result = self.registry.infer(model_id, frame)
-                    frame = draw_result(frame, result)
+                    frame = result.annotated_frame if result.annotated_frame is not None else draw_result(frame, result)
                 jpeg = encode_jpeg(frame)
                 with self._lock:
                     self._latest_jpeg = jpeg

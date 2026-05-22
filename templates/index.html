@@ -61,14 +61,29 @@
         </section>
 
         <section id="models" class="view">
-          <div class="section-head">
-            <h2>模型函数管理</h2>
-            <button id="add-model-function">新增函数</button>
+          <div class="model-management-grid">
+            <div class="model-panel">
+              <div class="section-head">
+                <h2>PT 文件管理</h2>
+                <button id="upload-model-file" type="button">上传 PT</button>
+              </div>
+              <table class="model-file-table">
+                <thead><tr><th>文件名</th><th>大小</th><th>更新时间</th></tr></thead>
+                <tbody id="model-file-rows"></tbody>
+              </table>
+              <input id="model-file-input" type="file" accept=".pt" hidden>
+            </div>
+            <div class="model-panel">
+              <div class="section-head">
+                <h2>模型逻辑管理</h2>
+                <button id="add-model-function">新增逻辑</button>
+              </div>
+              <table class="model-function-table">
+                <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>Python入口</th><th>绑定/配置</th><th>状态</th><th>操作</th></tr></thead>
+                <tbody id="model-function-rows"></tbody>
+              </table>
+            </div>
           </div>
-          <table class="model-function-table">
-            <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>Python入口</th><th>配置</th><th>状态</th><th>操作</th></tr></thead>
-            <tbody id="model-function-rows"></tbody>
-          </table>
         </section>
 
         <section id="users" class="view">
@@ -145,6 +160,6 @@
     </dialog>
 
     <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
-    <script src="/static/app.js?v=20260522-save-fallbacks"></script>
+    <script src="/static/app.js?v=20260522-stream-locks"></script>
   </body>
 </html>
