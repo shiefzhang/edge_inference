@@ -3,5 +3,6 @@ __pycache__/
 .venv/
 data/
 runs/
+generated_icons/
 app/user_functions/*.py
 !app/user_functions/__init__.py
