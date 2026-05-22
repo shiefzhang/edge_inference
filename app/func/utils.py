@@ -1,4 +1,5 @@
 import cv2
+import logging
 import numpy as np
 from PIL import Image
 from PIL import ImageFont, ImageDraw
@@ -11,6 +12,8 @@ except ImportError:
 
 from typing import List, Optional
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -87,7 +90,7 @@ def load_chinese_font(font_size):
             return ImageFont.truetype(font_path, font_size)
         except OSError:
             pass
-    print("警告：未找到可用中文字体，可能仍显示乱码")
+    logger.info("警告：未找到可用中文字体，可能仍显示乱码")
     return ImageFont.load_default()
 
 def get_text_size(text, font_size):
@@ -223,7 +226,7 @@ def draw_detections(
             
             # 4. 处理结果（可能得到多个线段）
             if uncut_lines.is_empty:
-                print("轮廓被完全切割，无剩余部分")
+                logger.info("轮廓被完全切割，无剩余部分")
             # 5. 在图像上绘制未被切割的部分
             elif isinstance(uncut_lines, LineString):
                 # 单个线段

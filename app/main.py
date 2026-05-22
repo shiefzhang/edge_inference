@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+from logging.handlers import RotatingFileHandler
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -19,7 +20,12 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(settings.data_dir / "server.log", encoding="utf-8"),
+        RotatingFileHandler(
+            settings.data_dir / "server.log",
+            maxBytes=settings.log_max_bytes,
+            backupCount=settings.log_backup_count,
+            encoding="utf-8",
+        ),
     ],
 )
 

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import io
+import logging
 import os
 import sys
 import threading
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -20,6 +23,33 @@ from ultralytics import YOLO
 
 from app.config import get_settings
 from app.models.base import BaseInferenceModule, InferenceBox, InferenceResult, ModelMetadata, RED
+
+logger = logging.getLogger(__name__)
+_stdio_redirect_lock = threading.RLock()
+
+
+class _LogStream(io.TextIOBase):
+    def __init__(self, level: int) -> None:
+        self.level = level
+        self._buffer = ""
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        self._buffer += text
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            if line.strip():
+                logger.log(self.level, line.rstrip())
+        return len(text)
+
+    def flush(self) -> None:
+        if self._buffer.strip():
+            logger.log(self.level, self._buffer.rstrip())
+        self._buffer = ""
 
 
 class FuncLogicModule(BaseInferenceModule):
@@ -63,7 +93,7 @@ class FuncLogicModule(BaseInferenceModule):
         image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         kwargs = self._build_call_kwargs()
         with self._lock:
-            raw = self._function(image, **kwargs)
+            raw = self._call_function(image, kwargs)
         annotated, detections = self._normalize_output(raw, frame)
         result = InferenceResult(annotated_frame=annotated)
         for detection in detections:
@@ -72,6 +102,17 @@ class FuncLogicModule(BaseInferenceModule):
             if box:
                 result.boxes.append(box)
         return result
+
+    def _call_function(self, image: Image.Image, kwargs: Dict[str, Any]) -> Any:
+        stdout = _LogStream(logging.INFO)
+        stderr = _LogStream(logging.ERROR)
+        with _stdio_redirect_lock:
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                try:
+                    return self._function(image, **kwargs)
+                finally:
+                    stdout.flush()
+                    stderr.flush()
 
     def _load_function(self) -> Callable[..., Any]:
         settings = get_settings()

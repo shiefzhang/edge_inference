@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from PIL import Image
 from typing import List, Tuple, Optional
@@ -7,6 +8,8 @@ from utils import draw_detections
 from utils import DetectionResult
 from utils import box_colors
 from detect_human import detect_human
+
+logger = logging.getLogger(__name__)
 
 def unvest(image: Image.Image, 
           conf_threshold: float = 0.25,
@@ -26,10 +29,10 @@ def unvest(image: Image.Image,
     vest1_idx = 2
 
     detections = detect_human(image, conf_threshold=conf_threshold, human_model=human_model)
-    print(f"检测到 {len(detections)} 个目标:")
+    logger.info(f"检测到 {len(detections)} 个目标:")
     
     if not detections:
-        print("  [无检测结果]")
+        logger.info("  [无检测结果]")
         return detections
 
     for human in detections:
@@ -38,7 +41,7 @@ def unvest(image: Image.Image,
             # 截取识别出的人员图像
             human_img = image.crop(human_box)
             # 使用反光衣分类模型进行预测，判断是否穿戴反光衣
-            vest_results = unvest_cls_model.predict(np.array(human_img), conf=0.25, verbose=True)
+            vest_results = unvest_cls_model.predict(np.array(human_img), conf=0.25, verbose=False)
 
             # 获取第一个结果
             result = vest_results[0] if vest_results else None
@@ -53,7 +56,7 @@ def unvest(image: Image.Image,
                     top_class_idx = probs.top1
                     top_conf = probs.top1conf
                     
-                    print(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
+                    logger.info(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
                     
                     if top_class_idx in [vest1_idx] and top_conf >= 0.2:
                         is_vest = True  # 穿戴了反光衣
@@ -68,7 +71,7 @@ def unvest(image: Image.Image,
                  human.violation = True
                  human.viol_content = f"人员未检测到反光衣，存在安全风险"
                  human.viol_color = list(box_colors["alarm"])
-                 print(f"  [违规] 人员({human.track_id}) 未检测到反光衣，存在安全风险")
+                 logger.info(f"  [违规] 人员({human.track_id}) 未检测到反光衣，存在安全风险")
             else:
                  human.violation = False
                  human.viol_color = list(box_colors.get(human.type, box_colors["unknown"]))

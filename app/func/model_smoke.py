@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from PIL import Image
 from typing import List, Tuple, Optional
@@ -7,6 +8,8 @@ from utils import draw_detections
 from utils import DetectionResult
 from utils import box_colors
 from detect_person import detect_default_person
+
+logger = logging.getLogger(__name__)
 
 def smoking(image: Image.Image, 
           conf_threshold: float = 0.25,
@@ -26,10 +29,10 @@ def smoking(image: Image.Image,
     smoke1_idx = 1  # 吸烟类别索引，需根据实际模型调整
 
     detections = detect_default_person(image, conf_threshold=conf_threshold, default_model=default_model)
-    print(f"检测到 {len(detections)} 个目标:")
+    logger.info(f"检测到 {len(detections)} 个目标:")
     
     if not detections:
-        print("  [无检测结果]")
+        logger.info("  [无检测结果]")
         return detections
 
     for person in detections:
@@ -38,7 +41,7 @@ def smoking(image: Image.Image,
             # 截取识别出的人员图像
             person_img = image.crop(person_box)
             # 使用吸烟检测分类模型进行预测，判断是否吸烟
-            smoking_results = smoke_cls_model.predict(np.array(person_img), conf=0.25, verbose=True)
+            smoking_results = smoke_cls_model.predict(np.array(person_img), conf=0.25, verbose=False)
             # 获取第一个结果
             result = smoking_results[0] if smoking_results else None
 
@@ -52,7 +55,7 @@ def smoking(image: Image.Image,
                     top_class_idx = probs.top1
                     top_conf = probs.top1conf
                     
-                    print(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
+                    logger.info(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
                     
                     if top_class_idx in [smoke1_idx] and top_conf >= 0.2:
                         is_smoking = True  # 吸烟了
@@ -67,7 +70,7 @@ def smoking(image: Image.Image,
                  person.violation = True
                  person.viol_content = f"人员吸烟，存在安全风险"
                  person.viol_color = list(box_colors["alarm"])
-                 print(f"  [违规] 人员({person.track_id}) 吸烟，存在安全风险")
+                 logger.info(f"  [违规] 人员({person.track_id}) 吸烟，存在安全风险")
             else:
                  person.violation = False
                  person.viol_color = list(box_colors.get(person.type, box_colors["unknown"]))

@@ -44,6 +44,8 @@ class Settings(BaseModel):
     frame_height: int = int(os.getenv("FRAME_HEIGHT", "720"))
     frame_fps: int = int(os.getenv("FRAME_FPS", "20"))
     inference_timeout_seconds: int = int(os.getenv("INFERENCE_TIMEOUT_SECONDS", "15"))
+    log_max_bytes: int = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
+    log_backup_count: int = int(os.getenv("LOG_BACKUP_COUNT", "5"))
 
 
 @lru_cache

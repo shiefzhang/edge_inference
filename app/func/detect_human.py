@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from PIL import Image
 from typing import List, Optional
@@ -9,6 +10,8 @@ from ultralytics import YOLO
 from utils import DetectionResult
 from utils import box_colors
 from utils import normalize_box
+
+logger = logging.getLogger(__name__)
 
 def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: YOLO = None) -> List[DetectionResult]:
     """
@@ -47,7 +50,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
         # classes=[human_idx, unhat_idx, unvest_idx, phone_idx, smoke_idx, human_unclear_idx, vest_idx, hat_idx],
         classes=[human_idx, human_unclear_idx],
         conf=conf_threshold,
-        verbose=True
+        verbose=False
     )
     # 获取第一个图像的结果
     result = human_results[0]
@@ -134,7 +137,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="未佩戴安全帽，存在安全风险",
                 viol_color=list(box_colors["alarm"])
             )
-            print(f"  [违规] 人员({t_id}) 未佩戴安全帽，存在安全风险 (置信度:{t_conf:.2f})")
+            logger.info(f"  [违规] 人员({t_id}) 未佩戴安全帽，存在安全风险 (置信度:{t_conf:.2f})")
             detections.append(detection)
 
     if len(unvest_boxes) > 0:
@@ -155,7 +158,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="未穿戴反光衣，存在安全风险",
                 viol_color=list(box_colors["alarm"])
             )
-            print(f"  [违规] 人员({t_id}) 未穿戴反光衣，存在安全风险 (置信度:{t_conf:.2f})")
+            logger.info(f"  [违规] 人员({t_id}) 未穿戴反光衣，存在安全风险 (置信度:{t_conf:.2f})")
             detections.append(detection)
 
     if len(phone_boxes) > 0:
@@ -176,7 +179,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="人员使用手机，存在安全风险",
                 viol_color=list(box_colors["alarm"])
             )
-            print(f"  [违规] 人员({t_id}) 使用手机，存在安全风险 (置信度:{t_conf:.2f})")
+            logger.info(f"  [违规] 人员({t_id}) 使用手机，存在安全风险 (置信度:{t_conf:.2f})")
             detections.append(detection)
 
     if len(smoke_boxes) > 0:
@@ -197,7 +200,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="人员吸烟，存在安全风险",
                 viol_color=list(box_colors["alarm"])
             )
-            print(f"  [违规] 人员({t_id}) 吸烟，存在安全风险 (置信度:{t_conf:.2f})")
+            logger.info(f"  [违规] 人员({t_id}) 吸烟，存在安全风险 (置信度:{t_conf:.2f})")
             detections.append(detection)
 
     if len(human_unclear_boxes) > 0:
@@ -218,7 +221,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="误识别为人员，存在安全风险",
                 viol_color=list(box_colors["alarm"])
             )
-            print(f"  [违规] 人员({t_id}) 误识别为人员，存在安全风险 (置信度:{t_conf:.2f})")
+            logger.info(f"  [违规] 人员({t_id}) 误识别为人员，存在安全风险 (置信度:{t_conf:.2f})")
             detections.append(detection)
     
     if len(vest_boxes) > 0:
@@ -239,7 +242,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="穿戴反光衣，符合安全要求",
                 viol_color=list(box_colors["vest"])
             )
-            print(f"  [正常] 人员({t_id}) 穿戴反光衣，符合安全要求 (置信度:{t_conf:.2f})")
+            logger.info(f"  [正常] 人员({t_id}) 穿戴反光衣，符合安全要求 (置信度:{t_conf:.2f})")
             detections.append(detection)
     
     if len(hat_boxes) > 0:
@@ -260,7 +263,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="佩戴安全帽，符合安全要求",
                 viol_color=list(box_colors["hat"])
             )
-            print(f"  [正常] 人员({t_id}) 佩戴安全帽，符合安全要求 (置信度:{t_conf:.2f})")
+            logger.info(f"  [正常] 人员({t_id}) 佩戴安全帽，符合安全要求 (置信度:{t_conf:.2f})")
             detections.append(detection)
 
     return detections

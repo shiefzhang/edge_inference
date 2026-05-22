@@ -37,7 +37,7 @@ def detect_default_person(image: Image.Image, conf_threshold: float = 0.25,defau
         persist=True,
         classes=[default_person_idx],
         conf=conf_threshold,
-        verbose=True
+        verbose=False
     )
     person_ids, person_boxes, person_confs = [], [], []
     if person_results and person_results[0].boxes:
