@@ -3,8 +3,11 @@ import numpy as np
 from PIL import Image
 from PIL import ImageFont, ImageDraw
 from pathlib import Path
-from shapely.geometry import LineString, Polygon, MultiLineString
-from shapely.ops import unary_union
+try:
+    from shapely.geometry import LineString, Polygon, MultiLineString
+    from shapely.ops import unary_union
+except ImportError:
+    LineString = Polygon = MultiLineString = unary_union = None
 
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -190,6 +193,9 @@ def draw_detections(
             # 绘制轮廓线
             cv2.drawContours(img, [contour_for_cv2], -1, color, 2)
 
+
+            if LineString is None or Polygon is None or MultiLineString is None or unary_union is None:
+                continue
 
             # 1. 将轮廓点转换为LineString（轮廓线）
             contour_line = LineString(contour_list)
