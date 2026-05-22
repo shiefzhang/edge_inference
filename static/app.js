@@ -285,7 +285,10 @@ document.body.addEventListener("click", async (event) => {
       target.disabled = true;
       target.textContent = "新增中";
       try {
-        await api("/api/streams/add", { method: "POST", body: "{}" });
+        const stream = await apiWithTimeout("/api/streams", { method: "POST", body: "{}" }, 6000);
+        if (!state.streams.some((item) => item.id === stream.id)) state.streams.push(stream);
+        render();
+        return;
       } finally {
         target.disabled = !canAdmin;
         target.textContent = "新增通道";
@@ -406,26 +409,82 @@ function openConnectionDialog(connection = null) {
   byId("connection-dialog").showModal();
 }
 
-byId("save-connection")?.addEventListener("click", async (event) => {
-  event.preventDefault();
+const savingForms = new Set();
+
+async function runSave(key, button, handler) {
+  if (savingForms.has(key)) return;
+  savingForms.add(key);
+  const originalText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "保存中";
+  }
   try {
-    const form = byId("connection-form");
-    if (!form.reportValidity()) return;
-    const payload = {
-      name: form.elements.name.value,
-      type: form.elements.type.value,
-      source: form.elements.source.value,
-      default_model_id: form.elements.default_model_id.value,
-      default_stream_id: Number(form.elements.default_stream_id.value),
-    };
-    const id = form.elements.connection_id.value;
-    await api(id ? `/api/connections/${id}` : "/api/connections", { method: id ? "PUT" : "POST", body: JSON.stringify(payload) });
-    byId("connection-dialog").close();
-    await refresh();
+    await handler();
   } catch (err) {
     alert(err.message);
+  } finally {
+    savingForms.delete(key);
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || "保存";
+    }
   }
-});
+}
+
+function wireSave(formId, buttonId, handler) {
+  const form = byId(formId);
+  const button = byId(buttonId);
+  const onSave = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runSave(formId, button, handler);
+  };
+  form?.addEventListener("submit", onSave);
+  button?.addEventListener("click", onSave);
+  button?.addEventListener("pointerdown", (event) => {
+    if (event.button && event.button !== 0) return;
+    onSave(event);
+  });
+}
+
+async function saveConnectionForm() {
+  const form = byId("connection-form");
+  if (!form.reportValidity()) return;
+  const payload = {
+    name: form.elements.name.value,
+    type: form.elements.type.value,
+    source: form.elements.source.value,
+    default_model_id: form.elements.default_model_id.value,
+    default_stream_id: Number(form.elements.default_stream_id.value),
+  };
+  const id = form.elements.connection_id.value;
+  await api(id ? `/api/connections/${id}` : "/api/connections", { method: id ? "PUT" : "POST", body: JSON.stringify(payload) });
+  byId("connection-dialog").close();
+  await refresh();
+}
+
+wireSave("connection-form", "save-connection", saveConnectionForm);
+
+async function saveUserForm() {
+  const form = byId("user-form");
+  if (!form.reportValidity()) return;
+  const editing = form.elements.editing.value;
+  const payload = {
+    role: form.elements.role.value,
+    enabled: form.elements.enabled.checked,
+  };
+  if (form.elements.password.value) payload.password = form.elements.password.value;
+  if (editing) {
+    await api(`/api/users/${editing}`, { method: "PATCH", body: JSON.stringify(payload) });
+  } else {
+    await api("/api/users", { method: "POST", body: JSON.stringify({ ...payload, username: form.elements.username.value, password: form.elements.password.value }) });
+  }
+  byId("user-dialog").close();
+  await refresh();
+}
+
+wireSave("user-form", "save-user", saveUserForm);
 
 function openUserDialog(user = null) {
   const form = byId("user-form");
@@ -439,29 +498,6 @@ function openUserDialog(user = null) {
   byId("user-title").textContent = user ? "编辑用户" : "新增用户";
   byId("user-dialog").showModal();
 }
-
-byId("save-user")?.addEventListener("click", async (event) => {
-  event.preventDefault();
-  try {
-    const form = byId("user-form");
-    if (!form.reportValidity()) return;
-    const editing = form.elements.editing.value;
-    const payload = {
-      role: form.elements.role.value,
-      enabled: form.elements.enabled.checked,
-    };
-    if (form.elements.password.value) payload.password = form.elements.password.value;
-    if (editing) {
-      await api(`/api/users/${editing}`, { method: "PATCH", body: JSON.stringify(payload) });
-    } else {
-      await api("/api/users", { method: "POST", body: JSON.stringify({ ...payload, username: form.elements.username.value, password: form.elements.password.value }) });
-    }
-    byId("user-dialog").close();
-    await refresh();
-  } catch (err) {
-    alert(err.message);
-  }
-});
 
 function openModelFunctionDialog(item = null) {
   const form = byId("model-function-form");
@@ -479,35 +515,32 @@ function openModelFunctionDialog(item = null) {
   byId("model-function-dialog").showModal();
 }
 
-byId("save-model-function")?.addEventListener("click", async (event) => {
-  event.preventDefault();
+async function saveModelFunctionForm() {
+  const form = byId("model-function-form");
+  if (!form.reportValidity()) return;
+  let config;
   try {
-    const form = byId("model-function-form");
-    if (!form.reportValidity()) return;
-    let config;
-    try {
-      config = JSON.parse(form.elements.config.value);
-    } catch {
-      alert("配置JSON格式不正确");
-      return;
-    }
-    const payload = {
-      id: form.elements.id.value,
-      name: form.elements.name.value,
-      task: form.elements.task.value,
-      entrypoint: form.elements.entrypoint.value,
-      description: form.elements.description.value,
-      config,
-      enabled: form.elements.enabled.checked,
-    };
-    const editing = form.elements.editing.value;
-    await api(editing ? `/api/model-functions/${editing}` : "/api/model-functions", { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) });
-    byId("model-function-dialog").close();
-    await refresh();
-  } catch (err) {
-    alert(err.message);
+    config = JSON.parse(form.elements.config.value);
+  } catch {
+    alert("配置JSON格式不正确");
+    return;
   }
-});
+  const payload = {
+    id: form.elements.id.value,
+    name: form.elements.name.value,
+    task: form.elements.task.value,
+    entrypoint: form.elements.entrypoint.value,
+    description: form.elements.description.value,
+    config,
+    enabled: form.elements.enabled.checked,
+  };
+  const editing = form.elements.editing.value;
+  await api(editing ? `/api/model-functions/${editing}` : "/api/model-functions", { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) });
+  byId("model-function-dialog").close();
+  await refresh();
+}
+
+wireSave("model-function-form", "save-model-function", saveModelFunctionForm);
 
 refresh();
 setInterval(refresh, 3000);

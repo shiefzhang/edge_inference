@@ -105,7 +105,7 @@
     </div>
 
     <dialog id="connection-dialog">
-      <form method="dialog" id="connection-form">
+      <form id="connection-form">
         <h3 id="connection-title">新增连接</h3>
         <input type="hidden" name="connection_id">
         <label>名称<input name="name" required></label>
@@ -113,24 +113,24 @@
         <label>地址/设备<input name="source" required placeholder="rtsp://... / /data/test.mp4 / 0"></label>
         <label>默认模型<select name="default_model_id"></select></label>
         <label>默认通道<select name="default_stream_id"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
-        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="button" id="save-connection" value="default">保存</button></menu>
+        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="submit" id="save-connection">保存</button></menu>
       </form>
     </dialog>
 
     <dialog id="user-dialog">
-      <form method="dialog" id="user-form">
+      <form id="user-form">
         <h3 id="user-title">新增用户</h3>
         <input type="hidden" name="editing">
         <label>用户名<input name="username" required></label>
         <label>密码<input name="password" type="password" minlength="4" placeholder="新增必填，编辑可留空"></label>
         <label>角色<select name="role"><option value="admin">管理员</option><option value="operator">操作员</option><option value="viewer">只读</option></select></label>
         <label class="check"><input name="enabled" type="checkbox" checked> 启用</label>
-        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="button" id="save-user" value="default">保存</button></menu>
+        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="submit" id="save-user">保存</button></menu>
       </form>
     </dialog>
 
     <dialog id="model-function-dialog">
-      <form method="dialog" id="model-function-form">
+      <form id="model-function-form">
         <h3 id="model-function-title">新增模型函数</h3>
         <input type="hidden" name="editing">
         <label>函数ID<input name="id" required pattern="[a-zA-Z0-9_-]+"></label>
@@ -140,11 +140,11 @@
         <label>说明<input name="description" placeholder="推理链路说明"></label>
         <label>配置JSON<textarea name="config" rows="9" required></textarea></label>
         <label class="check"><input name="enabled" type="checkbox" checked> 启用</label>
-        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="button" id="save-model-function" value="default">保存</button></menu>
+        <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="submit" id="save-model-function">保存</button></menu>
       </form>
     </dialog>
 
     <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
-    <script src="/static/app.js?v=20260522-nav-theme"></script>
+    <script src="/static/app.js?v=20260522-save-fallbacks"></script>
   </body>
 </html>
