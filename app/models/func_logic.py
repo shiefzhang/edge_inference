@@ -23,6 +23,7 @@ from ultralytics import YOLO
 
 from app.config import get_settings
 from app.models.base import BaseInferenceModule, InferenceBox, InferenceResult, ModelMetadata, RED
+from app.pt_model_cache import get_pt_model_cache
 
 logger = logging.getLogger(__name__)
 _stdio_redirect_lock = threading.RLock()
@@ -143,7 +144,7 @@ class FuncLogicModule(BaseInferenceModule):
     def _ensure_models(self) -> None:
         for arg_name, model_path in self._model_bindings().items():
             if arg_name not in self._models:
-                self._models[arg_name] = YOLO(str(self.models_dir / model_path))
+                self._models[arg_name] = get_pt_model_cache(self.models_dir).get(self.models_dir / model_path)
         primary = self.config.get("model_path")
         if primary and self.metadata.labels == {}:
             primary_model = next(reversed(self._models.values()), None)

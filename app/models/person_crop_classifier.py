@@ -15,6 +15,7 @@ from ultralytics import YOLO
 
 from app.models.base import BLUE, GRAY, RED, BaseInferenceModule, InferenceBox, InferenceResult, ModelMetadata
 from app.models.yolo_detector import YoloDetectorModule
+from app.pt_model_cache import get_pt_model_cache
 
 
 class PersonCropClassifierModule(BaseInferenceModule):
@@ -50,7 +51,7 @@ class PersonCropClassifierModule(BaseInferenceModule):
         self.person_detector.load()
         with self._lock:
             if self._model is None:
-                self._model = YOLO(str(self.model_path))
+                self._model = get_pt_model_cache(self.model_path.parent).get(self.model_path)
                 self.metadata.labels = dict(self._model.names)
 
     def infer(self, frame: np.ndarray) -> InferenceResult:

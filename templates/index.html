@@ -69,7 +69,7 @@
                 <button id="upload-model-file" type="button">上传 PT</button>
               </div>
               <table class="model-file-table">
-                <thead><tr><th>文件名</th><th>大小</th><th>更新时间</th></tr></thead>
+                <thead><tr><th>文件名</th><th>大小</th><th>更新时间</th><th>操作</th></tr></thead>
                 <tbody id="model-file-rows"></tbody>
               </table>
               <input id="model-file-input" type="file" accept=".pt" hidden>
@@ -131,6 +131,12 @@
         <label>默认通道<select name="default_stream_id"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
         <menu><button type="button" formnovalidate data-dialog-close class="ghost">取消</button><button type="submit" id="save-connection">保存</button></menu>
       </form>
+    </dialog>
+
+    <dialog id="model-file-detail-dialog" class="wide-dialog">
+      <h3 id="model-file-detail-title">PT 详情</h3>
+      <div id="model-file-detail-body" class="detail-body"></div>
+      <menu><button type="button" data-dialog-close class="ghost">关闭</button></menu>
     </dialog>
 
     <dialog id="user-dialog">

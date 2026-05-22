@@ -89,6 +89,21 @@ class ModelFileOut(BaseModel):
     modified_time: str
 
 
+class ModelLabelOut(BaseModel):
+    id: int
+    name: str
+
+
+class ModelFileDetailOut(ModelFileOut):
+    loaded: bool = False
+    warmup_done: bool = False
+    device: str = ""
+    memory_allocated_mb: int = 0
+    memory_reserved_mb: int = 0
+    labels: List[ModelLabelOut] = Field(default_factory=list)
+    error: str = ""
+
+
 class ModelFunctionIn(BaseModel):
     id: str = Field(min_length=2, max_length=64, pattern=r"^[a-zA-Z0-9_\\-]+$")
     name: str = Field(min_length=1, max_length=64)

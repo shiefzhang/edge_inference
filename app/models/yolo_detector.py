@@ -14,6 +14,7 @@ os.environ.setdefault("YOLO_CONFIG_DIR", str(_ultralytics_dir))
 from ultralytics import YOLO
 
 from app.models.base import BLUE, InferenceBox, InferenceResult, ModelMetadata, BaseInferenceModule
+from app.pt_model_cache import get_pt_model_cache
 
 
 class YoloDetectorModule(BaseInferenceModule):
@@ -41,7 +42,7 @@ class YoloDetectorModule(BaseInferenceModule):
     def load(self) -> None:
         with self._lock:
             if self._model is None:
-                self._model = YOLO(str(self.model_path))
+                self._model = get_pt_model_cache(self.model_path.parent).get(self.model_path)
                 self.metadata.labels = dict(self._model.names)
 
     def infer(self, frame: np.ndarray) -> InferenceResult:

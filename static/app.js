@@ -193,8 +193,30 @@ function renderModelFiles() {
       <td class="cell-entry" title="${escapeAttr(file.name)}">${file.name}</td>
       <td>${formatBytes(file.size)}</td>
       <td>${formatTime(file.modified_time)}</td>
+      <td class="actions"><button class="ghost" data-action="view-model-file" data-name="${escapeAttr(file.name)}">查看</button></td>
     </tr>
   `).join("");
+}
+
+function renderModelFileDetail(detail) {
+  const labels = detail.labels || [];
+  byId("model-file-detail-title").textContent = `${detail.name} 详情`;
+  byId("model-file-detail-body").innerHTML = `
+    <div class="detail-grid">
+      <div><strong>加载状态</strong><span>${detail.loaded ? "已加载" : "未加载"}</span></div>
+      <div><strong>Warmup</strong><span>${detail.warmup_done ? "已完成" : "未完成"}</span></div>
+      <div><strong>设备</strong><span>${detail.device || "-"}</span></div>
+      <div><strong>文件大小</strong><span>${formatBytes(detail.size)}</span></div>
+      <div><strong>显存占用</strong><span>${formatBytes((detail.memory_allocated_mb || 0) * 1024 * 1024)}</span></div>
+      <div><strong>显存保留</strong><span>${formatBytes((detail.memory_reserved_mb || 0) * 1024 * 1024)}</span></div>
+    </div>
+    ${detail.error ? `<p class="danger-text">错误: ${detail.error}</p>` : ""}
+    <table class="label-table">
+      <thead><tr><th>ID</th><th>标注名称</th></tr></thead>
+      <tbody>${labels.map((label) => `<tr><td>${label.id}</td><td>${label.name}</td></tr>`).join("") || `<tr><td colspan="2">无标注信息</td></tr>`}</tbody>
+    </table>
+  `;
+  byId("model-file-detail-dialog").showModal();
 }
 
 function renderModelFunctions() {
@@ -400,6 +422,11 @@ document.body.addEventListener("click", async (event) => {
     if (action === "edit-user") openUserDialog(state.users.find((u) => u.username === target.dataset.name));
     if (action === "delete-user" && confirm("删除该用户？")) await api(`/api/users/${target.dataset.name}`, { method: "DELETE" });
     if (action === "edit-model-function") openModelFunctionDialog(state.model_functions.find((m) => m.id === target.dataset.id));
+    if (action === "view-model-file") {
+      const detail = await api(`/api/model-files/${encodeURIComponent(target.dataset.name)}/detail`);
+      renderModelFileDetail(detail);
+      return;
+    }
     if (action === "upload-pt") target.parentElement.querySelector(`input[data-kind="pt"][data-id="${target.dataset.id}"]`)?.click();
     if (action === "upload-code") target.parentElement.querySelector(`input[data-kind="code"][data-id="${target.dataset.id}"]`)?.click();
     if (action === "delete-model-function" && confirm("删除该模型函数？")) await api(`/api/model-functions/${target.dataset.id}`, { method: "DELETE" });

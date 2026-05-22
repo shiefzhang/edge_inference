@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import router as api_router
 from app.config import get_settings
 from app.models.registry import ModelRegistry
+from app.pt_model_cache import get_pt_model_cache
 from app.store import JsonStore
 from app.streams.manager import StreamManager
 from app.web import router as web_router
@@ -38,6 +39,8 @@ logging.getLogger("uvicorn.access").disabled = not settings.access_log_enabled
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.store = JsonStore()
+    app.state.pt_models = get_pt_model_cache(settings.models_dir)
+    app.state.pt_models.preload_all()
     app.state.registry = ModelRegistry(app.state.store.list_model_functions(), settings.models_dir)
     app.state.streams = StreamManager(app.state.registry, app.state.store.get_stream_count())
     yield

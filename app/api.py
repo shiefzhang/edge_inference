@@ -18,6 +18,7 @@ from app.schemas import (
     ConnectionOut,
     HistoryLogOut,
     ModelFileOut,
+    ModelFileDetailOut,
     ModelInfo,
     ModelFunctionIn,
     ModelFunctionOut,
@@ -32,6 +33,7 @@ from app.schemas import (
 from app.store import JsonStore
 from app.streams.probe import probe_video_source
 from app.system_resources import get_memory_status
+from app.pt_model_cache import get_pt_model_cache, to_detail
 
 
 router = APIRouter(prefix="/api")
@@ -123,9 +125,20 @@ def upload_model_pt_file(file: UploadFile = File(...), store: JsonStore = Depend
     safe_name = f"{_safe_stem(Path(file.filename).stem)}.pt"
     target = get_settings().models_dir / safe_name
     _save_upload(file, target)
+    get_pt_model_cache(get_settings().models_dir).get(target)
     store.add_history_log(user.username, "upload_pt", "model_file", safe_name, message=safe_name)
     stat = target.stat()
     return ModelFileOut(name=target.name, size=stat.st_size, modified_time=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat())
+
+
+@router.get("/model-files/{file_name}/detail", response_model=ModelFileDetailOut)
+def model_file_detail(file_name: str, user: UserOut = Depends(current_user)):
+    settings = get_settings()
+    target = settings.models_dir / Path(file_name).name
+    if not target.exists() or target.suffix.lower() != ".pt":
+        raise HTTPException(status_code=404, detail="model file not found")
+    item = get_pt_model_cache(settings.models_dir).detail(target)
+    return to_detail(item)
 
 
 @router.get("/history-logs", response_model=list[HistoryLogOut])
@@ -187,6 +200,7 @@ def upload_model_file(function_id: str, request: Request, file: UploadFile = Fil
     safe_name = f"{_safe_stem(function_id)}_{_safe_stem(Path(file.filename).stem)}.pt"
     target = settings.models_dir / safe_name
     _save_upload(file, target)
+    get_pt_model_cache(settings.models_dir).get(target)
     payload = definition.model_copy(deep=True)
     _bind_primary_model_file(payload.config, safe_name)
     item = store.update_model_function(function_id, ModelFunctionIn(**payload.model_dump()))
