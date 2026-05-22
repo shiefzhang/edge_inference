@@ -44,6 +44,8 @@ class Settings(BaseModel):
     frame_height: int = int(os.getenv("FRAME_HEIGHT", "720"))
     frame_fps: int = int(os.getenv("FRAME_FPS", "20"))
     inference_timeout_seconds: int = int(os.getenv("INFERENCE_TIMEOUT_SECONDS", "15"))
+    capture_open_timeout_ms: int = int(os.getenv("CAPTURE_OPEN_TIMEOUT_MS", "5000"))
+    capture_read_timeout_ms: int = int(os.getenv("CAPTURE_READ_TIMEOUT_MS", "5000"))
     connection_test_timeout_ms: int = int(os.getenv("CONNECTION_TEST_TIMEOUT_MS", "15000"))
     log_max_bytes: int = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
     log_backup_count: int = int(os.getenv("LOG_BACKUP_COUNT", "5"))

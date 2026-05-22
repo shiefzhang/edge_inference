@@ -111,7 +111,10 @@ class StreamWorker:
     def _run(self, source: str, rtsp_enabled: bool, stop_event: threading.Event, generation: int) -> None:
         settings = get_settings()
         capture_source = int(source) if source.isdigit() else source
-        cap = cv2.VideoCapture(capture_source)
+        cap = cv2.VideoCapture()
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, settings.capture_open_timeout_ms)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, settings.capture_read_timeout_ms)
+        cap.open(capture_source)
         if not cap.isOpened():
             self._set_error(f"cannot open source: {source}", generation)
             return
@@ -138,6 +141,8 @@ class StreamWorker:
             while not stop_event.is_set():
                 ok, frame = cap.read()
                 if not ok:
+                    if stop_event.is_set():
+                        break
                     self._set_error("frame read failed", generation)
                     time.sleep(0.2)
                     continue
