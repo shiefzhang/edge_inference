@@ -1,4 +1,4 @@
-const state = { models: [], model_files: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [] };
+const state = { models: [], model_files: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [], memory: null };
 const streamDrafts = {};
 let streamControlFocused = false;
 let refreshTimer = null;
@@ -61,6 +61,13 @@ function formatApiError(detail) {
   return String(detail);
 }
 
+function formatMemory(memory) {
+  if (!memory || !memory.total_mb) return "-";
+  const usedGb = memory.used_mb / 1024;
+  const totalGb = memory.total_mb / 1024;
+  return `${usedGb.toFixed(1)}/${totalGb.toFixed(1)} GB`;
+}
+
 const modelOptions = (selected, includeNone = false) => `${includeNone ? `<option value="" ${!selected ? "selected" : ""}>无模型</option>` : ""}${state.models.map((m) => `<option value="${m.id}" ${m.id === selected ? "selected" : ""}>${m.name}</option>`).join("")}`;
 const connectionOptions = (selected) => state.connections.map((c) => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${c.name}</option>`).join("");
 const streamOptions = (selected) => state.streams.map((s) => `<option value="${s.id}" ${Number(selected) === s.id ? "selected" : ""}>${s.id}</option>`).join("");
@@ -104,6 +111,8 @@ function render() {
   byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/${state.streams.length}`;
   byId("metric-models").textContent = state.models.length;
   byId("metric-connections").textContent = state.connections.length;
+  byId("metric-memory").textContent = formatMemory(state.memory);
+  byId("metric-memory-label").textContent = `${state.memory?.label || "显存"}占用`;
   byId("metric-role").textContent = roleName(window.CURRENT_ROLE);
   renderStreams();
   renderConnections();

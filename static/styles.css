@@ -69,7 +69,7 @@ select:disabled { opacity: .65; cursor: not-allowed; background: #eef2f6; color:
 
 .view { display: none; }
 .view.active { display: block; }
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.metrics { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .metrics div, .stream-card, .model-panel, table, .settings-list, dialog { background: rgba(255, 255, 255, .92); border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line)); border-radius: 8px; box-shadow: 0 12px 32px rgba(22, 32, 42, .07); }
 .metrics div { padding: 14px; }
 .metrics div { border-top: 4px solid var(--accent); background: linear-gradient(180deg, #fff 0%, var(--soft) 160%); }

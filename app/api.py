@@ -31,6 +31,7 @@ from app.schemas import (
 )
 from app.store import JsonStore
 from app.streams.probe import probe_video_source
+from app.system_resources import get_memory_status
 
 
 router = APIRouter(prefix="/api")
@@ -101,6 +102,7 @@ def snapshot(request: Request, store: JsonStore = Depends(get_store), user: User
         model_functions=store.list_model_functions(),
         history_logs=store.list_history_logs(limit=50),
         streams=request.app.state.streams.statuses(),
+        memory=get_memory_status(),
     )
 
 

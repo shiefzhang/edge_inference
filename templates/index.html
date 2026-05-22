@@ -44,6 +44,7 @@
             <div><strong id="metric-online">0/4</strong><span>在线通道</span></div>
             <div><strong id="metric-models">0</strong><span>可用模型</span></div>
             <div><strong id="metric-connections">0</strong><span>连接配置</span></div>
+            <div><strong id="metric-memory">-</strong><span id="metric-memory-label">显存占用</span></div>
             <div><strong id="metric-role">{% if user.role.value == "admin" %}管理员{% elif user.role.value == "operator" %}操作员{% elif user.role.value == "viewer" %}只读{% else %}{{ user.role.value }}{% endif %}</strong><span>当前角色</span></div>
           </div>
           <div id="stream-grid" class="stream-grid"></div>

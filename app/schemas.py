@@ -114,6 +114,13 @@ class HistoryLogOut(BaseModel):
     message: str = ""
 
 
+class MemoryStatus(BaseModel):
+    kind: str = "unknown"
+    label: str = "显存"
+    total_mb: int = 0
+    used_mb: int = 0
+
+
 class AppSnapshot(BaseModel):
     users: List[UserOut]
     connections: List[ConnectionOut]
@@ -122,3 +129,4 @@ class AppSnapshot(BaseModel):
     model_functions: List[ModelFunctionOut]
     history_logs: List[HistoryLogOut]
     streams: List[StreamStatus]
+    memory: MemoryStatus
