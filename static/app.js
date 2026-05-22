@@ -76,11 +76,11 @@ const findStream = (id) => state.streams.find((s) => String(s.id) === String(id)
 const streamControlIsLocked = (stream) => stream?.running || !canOperate;
 const hasRunningStreams = () => state.streams.some((stream) => stream.running);
 
-async function refresh() {
+async function refresh(options = {}) {
   const snapshot = await api("/api/snapshot");
   Object.assign(state, snapshot);
   syncRefreshLoop();
-  if (streamControlFocused || document.querySelector("dialog[open]")) return;
+  if (!options.forceRender && (streamControlFocused || document.querySelector("dialog[open]"))) return;
   render();
 }
 
@@ -108,7 +108,7 @@ function syncRefreshLoop() {
 }
 
 function scheduleResourceRefresh() {
-  [800, 2000, 5000].forEach((delay) => setTimeout(refresh, delay));
+  [0, 800, 2000, 5000].forEach((delay) => setTimeout(() => refresh({ forceRender: true }), delay));
 }
 
 function render() {
@@ -352,7 +352,9 @@ document.body.addEventListener("click", async (event) => {
       const card = target.closest(".stream-card");
       const connectionId = card.querySelector(".stream-connection").value;
       const modelId = card.querySelector(".stream-model").value;
+      document.activeElement?.blur();
       target.disabled = true;
+      streamControlFocused = false;
       await api(`/api/streams/${id}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
       scheduleResourceRefresh();
     }
