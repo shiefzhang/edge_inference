@@ -1,6 +1,7 @@
 const state = { models: [], model_files: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [] };
 const streamDrafts = {};
 let streamControlFocused = false;
+let refreshTimer = null;
 
 const shell = document.querySelector(".shell");
 const savedSidebar = localStorage.getItem("sidebarCollapsed");
@@ -15,6 +16,11 @@ const api = async (url, options = {}) => {
     ...options,
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      stopRefreshLoop();
+      if (window.location.pathname !== "/login") window.location.replace("/login");
+      throw new Error("登录已失效，请重新登录");
+    }
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
     const message = response.status === 405 ? "接口方法不支持，请重启后端服务后再试" : formatApiError(detail.detail || response.statusText);
     throw new Error(message);
@@ -67,6 +73,29 @@ async function refresh() {
   Object.assign(state, snapshot);
   if (streamControlFocused || document.querySelector("dialog[open]")) return;
   render();
+}
+
+function currentView() {
+  return document.querySelector(".view.active")?.id || "monitor";
+}
+
+function startRefreshLoop() {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(refresh, 3000);
+}
+
+function stopRefreshLoop() {
+  if (!refreshTimer) return;
+  clearInterval(refreshTimer);
+  refreshTimer = null;
+}
+
+function syncRefreshLoop() {
+  if (currentView() === "monitor") {
+    startRefreshLoop();
+  } else {
+    stopRefreshLoop();
+  }
 }
 
 function render() {
@@ -279,6 +308,8 @@ document.querySelectorAll(".nav").forEach((button) => {
     byId(button.dataset.view).classList.add("active");
     byId("page-title").textContent = button.textContent;
     applyViewTheme(button.dataset.view);
+    syncRefreshLoop();
+    refresh();
   });
 });
 
@@ -593,4 +624,5 @@ async function saveModelFunctionForm() {
 wireSave("model-function-form", "save-model-function", saveModelFunctionForm);
 
 refresh();
-setInterval(refresh, 3000);
+syncRefreshLoop();
+window.addEventListener("pagehide", stopRefreshLoop);

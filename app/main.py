@@ -31,6 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     handlers=log_handlers,
 )
+logging.getLogger("uvicorn.access").disabled = not settings.access_log_enabled
 
 
 @asynccontextmanager

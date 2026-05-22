@@ -47,6 +47,7 @@ class Settings(BaseModel):
     log_max_bytes: int = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
     log_backup_count: int = int(os.getenv("LOG_BACKUP_COUNT", "5"))
     log_to_console: bool = os.getenv("LOG_TO_CONSOLE", "0") == "1"
+    access_log_enabled: bool = os.getenv("ACCESS_LOG_ENABLED", "0") == "1"
 
 
 @lru_cache
