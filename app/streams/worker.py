@@ -35,29 +35,42 @@ class StreamWorker:
         self.registry = registry
         self.state = WorkerState()
         self._lock = threading.RLock()
-        self._stop_event = threading.Event()
+        self._stop_event: Optional[threading.Event] = None
         self._thread: Optional[threading.Thread] = None
         self._latest_jpeg: Optional[bytes] = None
         self._publisher: Optional[RtspPublisher] = None
+        self._run_generation = 0
 
     def start(self, source: str, model_id: str, connection_id: Optional[str], rtsp_enabled: bool = True) -> None:
         self.stop()
         with self._lock:
             self.state = WorkerState(True, source, connection_id, model_id)
-            self._stop_event.clear()
-            self._thread = threading.Thread(target=self._run, args=(source, rtsp_enabled), daemon=True, name=f"stream-{self.stream_id}")
+            self._run_generation += 1
+            stop_event = threading.Event()
+            self._stop_event = stop_event
+            self._thread = threading.Thread(target=self._run, args=(source, rtsp_enabled, stop_event, self._run_generation), daemon=True, name=f"stream-{self.stream_id}")
             self._thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3)
-        if self._publisher:
-            self._publisher.stop()
         with self._lock:
+            stop_event = self._stop_event
+            thread = self._thread
+            publisher = self._publisher
             self.state.running = False
-            self._thread = None
             self._publisher = None
+            self._stop_event = None
+            if not thread or not thread.is_alive():
+                self._thread = None
+        if stop_event:
+            stop_event.set()
+        if publisher:
+            publisher.stop()
+        if thread and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=0.2)
+            if not thread.is_alive():
+                with self._lock:
+                    if self._thread is thread:
+                        self._thread = None
 
     def switch_model(self, model_id: str) -> None:
         if model_id not in self.registry.modules:
@@ -73,26 +86,37 @@ class StreamWorker:
         with self._lock:
             return WorkerState(**self.state.__dict__)
 
-    def _run(self, source: str, rtsp_enabled: bool) -> None:
+    def _run(self, source: str, rtsp_enabled: bool, stop_event: threading.Event, generation: int) -> None:
         settings = get_settings()
         capture_source = int(source) if source.isdigit() else source
         cap = cv2.VideoCapture(capture_source)
         if not cap.isOpened():
-            self._set_error(f"cannot open source: {source}")
+            self._set_error(f"cannot open source: {source}", generation)
             return
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or settings.frame_width
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or settings.frame_height
         fps = self._normalize_capture_fps(cap.get(cv2.CAP_PROP_FPS), settings.frame_fps)
-        if rtsp_enabled:
-            self._publisher = RtspPublisher(self.stream_id, width, height, fps)
-            self._publisher.start()
+        if rtsp_enabled and not stop_event.is_set():
+            publisher: Optional[RtspPublisher] = RtspPublisher(self.stream_id, width, height, fps)
+            with self._lock:
+                if generation == self._run_generation and not stop_event.is_set():
+                    self._publisher = publisher
+                else:
+                    publisher = None
+            if publisher:
+                publisher.start()
+                if stop_event.is_set():
+                    with self._lock:
+                        if self._publisher is publisher:
+                            self._publisher = None
+                    publisher.stop()
         last_tick = time.time()
         last_frames = 0
         try:
-            while not self._stop_event.is_set():
+            while not stop_event.is_set():
                 ok, frame = cap.read()
                 if not ok:
-                    self._set_error("frame read failed")
+                    self._set_error("frame read failed", generation)
                     time.sleep(0.2)
                     continue
                 model_id = self.snapshot().model_id
@@ -112,8 +136,10 @@ class StreamWorker:
                 with self._lock:
                     self._latest_jpeg = jpeg
                     self.state.frames += 1
-                if self._publisher:
-                    self._publisher.write(frame)
+                with self._lock:
+                    publisher = self._publisher if generation == self._run_generation else None
+                if publisher:
+                    publisher.write(frame)
                 now = time.time()
                 if now - last_tick >= 1.0:
                     with self._lock:
@@ -122,16 +148,25 @@ class StreamWorker:
                     last_tick = now
         except Exception as exc:
             logger.exception("stream %s stopped by worker error", self.stream_id)
-            self._set_error(str(exc))
+            self._set_error(str(exc), generation)
         finally:
             cap.release()
-            if self._publisher:
-                self._publisher.stop()
             with self._lock:
-                self.state.running = False
+                publisher = self._publisher if generation == self._run_generation else None
+                if generation == self._run_generation:
+                    self._publisher = None
+            if publisher:
+                publisher.stop()
+            with self._lock:
+                if generation == self._run_generation:
+                    self.state.running = False
+                    if self._thread is threading.current_thread():
+                        self._thread = None
 
-    def _set_error(self, message: str) -> None:
+    def _set_error(self, message: str, generation: Optional[int] = None) -> None:
         with self._lock:
+            if generation is not None and generation != self._run_generation:
+                return
             self.state.last_error = message
             self.state.running = False
 
