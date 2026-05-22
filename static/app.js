@@ -61,7 +61,7 @@ function formatApiError(detail) {
   return String(detail);
 }
 
-const modelOptions = (selected) => state.models.map((m) => `<option value="${m.id}" ${m.id === selected ? "selected" : ""}>${m.name}</option>`).join("");
+const modelOptions = (selected, includeNone = false) => `${includeNone ? `<option value="" ${!selected ? "selected" : ""}>无模型</option>` : ""}${state.models.map((m) => `<option value="${m.id}" ${m.id === selected ? "selected" : ""}>${m.name}</option>`).join("")}`;
 const connectionOptions = (selected) => state.connections.map((c) => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${c.name}</option>`).join("");
 const streamOptions = (selected) => state.streams.map((s) => `<option value="${s.id}" ${Number(selected) === s.id ? "selected" : ""}>${s.id}</option>`).join("");
 const byId = (id) => document.getElementById(id);
@@ -129,7 +129,7 @@ function renderStreams() {
     const img = stream.running ? `<img src="/api/video/${stream.id}?t=${Date.now()}" alt="通道 ${stream.id}">` : "未启动";
     const draft = streamDrafts[stream.id] || {};
     const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
-    const selectedModel = stream.model_id || draft.model_id || state.connections.find((c) => c.id === selectedConnection)?.default_model_id || "person_detector";
+    const selectedModel = stream.model_id ?? draft.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "";
     const configDisabled = streamControlIsLocked(stream) ? "disabled" : "";
     const startDisabled = canOperate && !stream.running ? "" : "disabled";
     const stopDisabled = canOperate && stream.running ? "" : "disabled";
@@ -140,7 +140,7 @@ function renderStreams() {
         <div class="video-box">${img}</div>
         <div class="stream-controls">
           <select class="stream-connection" data-stream="${stream.id}" ${configDisabled}>${connectionOptions(selectedConnection)}</select>
-          <select class="stream-model" data-stream="${stream.id}" ${configDisabled}>${modelOptions(selectedModel)}</select>
+          <select class="stream-model" data-stream="${stream.id}" ${configDisabled}>${modelOptions(selectedModel, true)}</select>
           <button data-action="start" data-stream="${stream.id}" ${startDisabled}>启动</button>
           <button class="ghost" data-action="stop" data-stream="${stream.id}" ${stopDisabled}>停止</button>
           <button class="danger" data-action="delete-stream" data-stream="${stream.id}" ${canAdmin && !stream.running ? "" : "disabled"}>删除</button>

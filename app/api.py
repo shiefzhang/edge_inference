@@ -342,14 +342,18 @@ def delete_stream(stream_id: int, request: Request, store: JsonStore = Depends(g
 def start_stream(stream_id: int, data: StreamStartIn, request: Request, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     connection = store.get_connection(data.connection_id) if data.connection_id else None
     source = data.source or (connection.source if connection else None)
-    model_id = data.model_id or (connection.default_model_id if connection else "person_detector")
+    model_id = data.model_id
+    if model_id is None:
+        model_id = connection.default_model_id if connection else "person_detector"
+    if model_id == "":
+        model_id = None
     if not source:
         raise HTTPException(status_code=400, detail="source or connection_id is required")
-    if model_id not in request.app.state.registry.modules:
+    if model_id and model_id not in request.app.state.registry.modules:
         raise HTTPException(status_code=400, detail="unknown model")
     try:
         request.app.state.streams.start(stream_id, source, model_id, data.connection_id, data.rtsp_enabled)
-        store.add_history_log(user.username, "start", "stream", str(stream_id), message=f"{source} / {model_id}")
+        store.add_history_log(user.username, "start", "stream", str(stream_id), message=f"{source} / {model_id or 'none'}")
         return request.app.state.streams.status(stream_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="stream not found") from exc

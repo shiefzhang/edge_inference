@@ -41,7 +41,7 @@ class StreamWorker:
         self._publisher: Optional[RtspPublisher] = None
         self._run_generation = 0
 
-    def start(self, source: str, model_id: str, connection_id: Optional[str], rtsp_enabled: bool = True) -> None:
+    def start(self, source: str, model_id: Optional[str], connection_id: Optional[str], rtsp_enabled: bool = True) -> None:
         self.stop()
         with self._lock:
             self.state = WorkerState(True, source, connection_id, model_id)
@@ -50,7 +50,7 @@ class StreamWorker:
             self._stop_event = stop_event
             self._thread = threading.Thread(target=self._run, args=(source, rtsp_enabled, stop_event, self._run_generation), daemon=True, name=f"stream-{self.stream_id}")
             self._thread.start()
-            logger.info("stream %s start requested generation=%s source=%s model=%s rtsp=%s", self.stream_id, self._run_generation, source, model_id, rtsp_enabled)
+            logger.info("stream %s start requested generation=%s source=%s model=%s rtsp=%s", self.stream_id, self._run_generation, source, model_id or "none", rtsp_enabled)
 
     def stop(self) -> None:
         with self._lock:

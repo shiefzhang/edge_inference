@@ -31,7 +31,7 @@ class StreamManager:
     def stream_count(self) -> int:
         return len(self.workers)
 
-    def start(self, stream_id: int, source: str, model_id: str, connection_id: str | None = None, rtsp_enabled: bool = True) -> None:
+    def start(self, stream_id: int, source: str, model_id: str | None, connection_id: str | None = None, rtsp_enabled: bool = True) -> None:
         self._worker(stream_id).start(source, model_id, connection_id, rtsp_enabled)
 
     def stop(self, stream_id: int) -> None:
