@@ -43,6 +43,7 @@ class Settings(BaseModel):
     frame_width: int = int(os.getenv("FRAME_WIDTH", "1280"))
     frame_height: int = int(os.getenv("FRAME_HEIGHT", "720"))
     frame_fps: int = int(os.getenv("FRAME_FPS", "20"))
+    inference_timeout_seconds: int = int(os.getenv("INFERENCE_TIMEOUT_SECONDS", "15"))
 
 
 @lru_cache

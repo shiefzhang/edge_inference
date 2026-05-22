@@ -152,6 +152,10 @@ class FuncLogicModule(BaseInferenceModule):
         if isinstance(annotated, Image.Image):
             annotated = np.array(annotated)
         if isinstance(annotated, np.ndarray):
+            if annotated.ndim != 3 or annotated.shape[2] < 3:
+                return fallback_frame.copy(), detections
+            if annotated.shape[:2] != fallback_frame.shape[:2]:
+                annotated = cv2.resize(annotated, (fallback_frame.shape[1], fallback_frame.shape[0]))
             return cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR), detections
         return fallback_frame.copy(), detections
 

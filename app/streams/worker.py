@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import threading
 import time
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 import cv2
+import numpy as np
 
 from app.config import get_settings
 from app.models.registry import ModelRegistry
@@ -13,6 +15,7 @@ from app.streams.drawing import draw_result, encode_jpeg
 from app.streams.rtsp import RtspPublisher
 
 MAX_RTSP_FPS = 60
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -94,13 +97,21 @@ class StreamWorker:
                     continue
                 model_id = self.snapshot().model_id
                 if model_id:
-                    result = self.registry.infer(model_id, frame)
-                    frame = result.annotated_frame if result.annotated_frame is not None else draw_result(frame, result)
+                    try:
+                        result = self.registry.infer(model_id, frame, timeout=settings.inference_timeout_seconds)
+                        frame = result.annotated_frame if result.annotated_frame is not None else draw_result(frame, result)
+                        with self._lock:
+                            self.state.last_error = None
+                    except Exception as exc:
+                        message = str(exc)
+                        logger.exception("stream %s model %s inference failed on frame %s", self.stream_id, model_id, self.state.frames + 1)
+                        frame = self._draw_error(frame, message)
+                        with self._lock:
+                            self.state.last_error = message
                 jpeg = encode_jpeg(frame)
                 with self._lock:
                     self._latest_jpeg = jpeg
                     self.state.frames += 1
-                    self.state.last_error = None
                 if self._publisher:
                     self._publisher.write(frame)
                 now = time.time()
@@ -110,6 +121,7 @@ class StreamWorker:
                         last_frames = self.state.frames
                     last_tick = now
         except Exception as exc:
+            logger.exception("stream %s stopped by worker error", self.stream_id)
             self._set_error(str(exc))
         finally:
             cap.release()
@@ -132,3 +144,11 @@ class StreamWorker:
         if fps <= 0 or fps > MAX_RTSP_FPS:
             return fallback_fps
         return fps
+
+    @staticmethod
+    def _draw_error(frame: np.ndarray, message: str) -> np.ndarray:
+        output = frame.copy()
+        text = f"Inference error: {message[:120]}"
+        cv2.rectangle(output, (0, 0), (output.shape[1], 44), (0, 0, 180), -1)
+        cv2.putText(output, text, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+        return output

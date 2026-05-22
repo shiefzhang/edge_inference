@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import importlib
 import importlib.util
 import sys
@@ -67,11 +67,15 @@ class ModelRegistry:
     def list_models(self) -> List[ModelInfo]:
         return [ModelInfo(**module.metadata.__dict__) for module in self.modules.values()]
 
-    def infer(self, model_id: str, frame: np.ndarray) -> InferenceResult:
+    def infer(self, model_id: str, frame: np.ndarray, timeout: float | None = None) -> InferenceResult:
         if model_id not in self.modules:
             raise KeyError(model_id)
         future = self.executors[model_id].submit(self.modules[model_id].infer, frame)
-        return future.result()
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError as exc:
+            future.cancel()
+            raise TimeoutError(f"model inference timed out after {timeout}s") from exc
 
     def close(self) -> None:
         for executor in self.executors.values():

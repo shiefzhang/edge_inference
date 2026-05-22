@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +10,18 @@ from app.models.registry import ModelRegistry
 from app.store import JsonStore
 from app.streams.manager import StreamManager
 from app.web import router as web_router
+
+
+settings = get_settings()
+settings.data_dir.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(settings.data_dir / "server.log", encoding="utf-8"),
+    ],
+)
 
 
 @asynccontextmanager
@@ -23,7 +36,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Edge Inference Control Platform", lifespan=lifespan)
-settings = get_settings()
 app.mount("/static", StaticFiles(directory=str(settings.base_dir / "static")), name="static")
 app.include_router(api_router)
 app.include_router(web_router)
