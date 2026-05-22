@@ -12,6 +12,8 @@ from app.models.registry import ModelRegistry
 from app.streams.drawing import draw_result, encode_jpeg
 from app.streams.rtsp import RtspPublisher
 
+MAX_RTSP_FPS = 60
+
 
 @dataclass
 class WorkerState:
@@ -77,7 +79,7 @@ class StreamWorker:
             return
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or settings.frame_width
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or settings.frame_height
-        fps = int(cap.get(cv2.CAP_PROP_FPS)) or settings.frame_fps
+        fps = self._normalize_capture_fps(cap.get(cv2.CAP_PROP_FPS), settings.frame_fps)
         if rtsp_enabled:
             self._publisher = RtspPublisher(self.stream_id, width, height, fps)
             self._publisher.start()
@@ -120,3 +122,13 @@ class StreamWorker:
         with self._lock:
             self.state.last_error = message
             self.state.running = False
+
+    @staticmethod
+    def _normalize_capture_fps(raw_fps: float, fallback_fps: int) -> int:
+        try:
+            fps = int(round(raw_fps))
+        except (TypeError, ValueError, OverflowError):
+            fps = 0
+        if fps <= 0 or fps > MAX_RTSP_FPS:
+            return fallback_fps
+        return fps
