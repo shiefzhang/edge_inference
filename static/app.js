@@ -107,6 +107,10 @@ function syncRefreshLoop() {
   }
 }
 
+function scheduleResourceRefresh() {
+  [800, 2000, 5000].forEach((delay) => setTimeout(refresh, delay));
+}
+
 function render() {
   byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/${state.streams.length}`;
   byId("metric-models").textContent = state.models.length;
@@ -350,6 +354,7 @@ document.body.addEventListener("click", async (event) => {
       const modelId = card.querySelector(".stream-model").value;
       target.disabled = true;
       await api(`/api/streams/${id}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
+      scheduleResourceRefresh();
     }
     if (action === "add-stream") {
       target.disabled = true;
@@ -369,6 +374,7 @@ document.body.addEventListener("click", async (event) => {
       target.disabled = true;
       streamControlFocused = false;
       await api(`/api/streams/${target.dataset.stream}/stop`, { method: "POST", body: "{}" });
+      scheduleResourceRefresh();
     }
     if (action === "delete-stream" && confirm(`删除通道 ${target.dataset.stream}？`)) {
       await api(`/api/streams/${target.dataset.stream}`, { method: "DELETE" });
