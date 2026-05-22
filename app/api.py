@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import re
 import shutil
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from app.streams.probe import probe_video_source
 
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 
 
 def _safe_stem(value: str) -> str:
@@ -356,9 +358,20 @@ def start_stream(stream_id: int, data: StreamStartIn, request: Request, store: J
 @router.post("/streams/{stream_id}/stop", response_model=StreamStatus)
 def stop_stream(stream_id: int, request: Request, user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
     try:
+        started = time.monotonic()
+        before = request.app.state.streams.status(stream_id)
+        logger.info("api stop stream %s requested by=%s running=%s frames=%s", stream_id, user.username, before.running, before.frames)
         request.app.state.streams.stop(stream_id)
         request.app.state.store.add_history_log(user.username, "stop", "stream", str(stream_id))
-        return request.app.state.streams.status(stream_id)
+        after = request.app.state.streams.status(stream_id)
+        logger.info(
+            "api stop stream %s returned running=%s frames=%s elapsed_ms=%s",
+            stream_id,
+            after.running,
+            after.frames,
+            round((time.monotonic() - started) * 1000, 2),
+        )
+        return after
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="stream not found") from exc
 
@@ -376,10 +389,19 @@ def switch_model(stream_id: int, data: StreamModelIn, request: Request, user: Us
 @router.get("/video/{stream_id}")
 def video_stream(stream_id: int, request: Request, user: UserOut = Depends(current_user)):
     def frames():
-        while True:
-            jpeg = request.app.state.streams.latest_jpeg(stream_id)
-            if jpeg:
-                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
-            time.sleep(0.08)
+        logger.info("video stream %s opened by=%s", stream_id, user.username)
+        try:
+            while request.app.state.streams.is_running(stream_id):
+                jpeg = request.app.state.streams.latest_jpeg(stream_id)
+                if jpeg:
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+                time.sleep(0.08)
+        finally:
+            logger.info("video stream %s closed by=%s", stream_id, user.username)
+
+    try:
+        request.app.state.streams.status(stream_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="stream not found") from exc
 
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")

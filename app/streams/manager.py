@@ -43,6 +43,9 @@ class StreamManager:
     def latest_jpeg(self, stream_id: int):
         return self._worker(stream_id).latest_jpeg()
 
+    def is_running(self, stream_id: int) -> bool:
+        return self._worker(stream_id).is_running()
+
     def statuses(self) -> List[StreamStatus]:
         return [self.status(stream_id) for stream_id in self.workers]
 

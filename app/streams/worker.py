@@ -50,17 +50,29 @@ class StreamWorker:
             self._stop_event = stop_event
             self._thread = threading.Thread(target=self._run, args=(source, rtsp_enabled, stop_event, self._run_generation), daemon=True, name=f"stream-{self.stream_id}")
             self._thread.start()
+            logger.info("stream %s start requested generation=%s source=%s model=%s rtsp=%s", self.stream_id, self._run_generation, source, model_id, rtsp_enabled)
 
     def stop(self) -> None:
         with self._lock:
             stop_event = self._stop_event
             thread = self._thread
             publisher = self._publisher
+            generation = self._run_generation
+            frames = self.state.frames
             self.state.running = False
             self._publisher = None
             self._stop_event = None
+            self._latest_jpeg = None
             if not thread or not thread.is_alive():
                 self._thread = None
+        logger.info(
+            "stream %s stop requested generation=%s frames=%s thread_alive=%s publisher_active=%s",
+            self.stream_id,
+            generation,
+            frames,
+            bool(thread and thread.is_alive()),
+            bool(publisher),
+        )
         if stop_event:
             stop_event.set()
         if publisher:
@@ -71,6 +83,10 @@ class StreamWorker:
                 with self._lock:
                     if self._thread is thread:
                         self._thread = None
+        with self._lock:
+            still_alive = bool(thread and thread.is_alive())
+            running = self.state.running
+        logger.info("stream %s stop returned generation=%s thread_alive=%s running=%s", self.stream_id, generation, still_alive, running)
 
     def switch_model(self, model_id: str) -> None:
         if model_id not in self.registry.modules:
@@ -80,7 +96,13 @@ class StreamWorker:
 
     def latest_jpeg(self) -> Optional[bytes]:
         with self._lock:
+            if not self.state.running:
+                return None
             return self._latest_jpeg
+
+    def is_running(self) -> bool:
+        with self._lock:
+            return self.state.running
 
     def snapshot(self) -> WorkerState:
         with self._lock:
@@ -132,6 +154,8 @@ class StreamWorker:
                         frame = self._draw_error(frame, message)
                         with self._lock:
                             self.state.last_error = message
+                if stop_event.is_set():
+                    break
                 jpeg = encode_jpeg(frame)
                 with self._lock:
                     self._latest_jpeg = jpeg
