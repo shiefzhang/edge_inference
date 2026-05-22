@@ -126,7 +126,8 @@ function renderStreams() {
   if (!grid) return;
   grid.innerHTML = state.streams.map((stream) => {
     const running = stream.running ? "running" : "";
-    const img = stream.running ? `<img src="/api/video/${stream.id}?t=${Date.now()}" alt="通道 ${stream.id}">` : "未启动";
+    const fpsOverlay = stream.running ? `<span class="video-fps">FPS: ${Number(stream.fps || 0).toFixed(1)}</span>` : "";
+    const img = stream.running ? `<img src="/api/video/${stream.id}?t=${Date.now()}" alt="通道 ${stream.id}">${fpsOverlay}` : "未启动";
     const draft = streamDrafts[stream.id] || {};
     const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
     const selectedModel = stream.model_id ?? draft.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "";
