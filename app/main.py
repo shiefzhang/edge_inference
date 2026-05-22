@@ -15,18 +15,21 @@ from app.web import router as web_router
 
 settings = get_settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
+log_handlers: list[logging.Handler] = [
+    RotatingFileHandler(
+        settings.data_dir / "server.log",
+        maxBytes=settings.log_max_bytes,
+        backupCount=settings.log_backup_count,
+        encoding="utf-8",
+    )
+]
+if settings.log_to_console:
+    log_handlers.append(logging.StreamHandler())
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        RotatingFileHandler(
-            settings.data_dir / "server.log",
-            maxBytes=settings.log_max_bytes,
-            backupCount=settings.log_backup_count,
-            encoding="utf-8",
-        ),
-    ],
+    handlers=log_handlers,
 )
 
 

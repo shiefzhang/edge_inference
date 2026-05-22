@@ -31,10 +31,10 @@ def unhat(image: Image.Image,
     hat3_idx = 2
 
     detections = detect_human(image, conf_threshold=conf_threshold, human_model=human_model)
-    logger.info(f"检测到 {len(detections)} 个目标:")
+    logger.debug(f"检测到 {len(detections)} 个目标:")
     
     if not detections:
-        logger.info("  [无检测结果]")
+        logger.debug("  [无检测结果]")
         return detections
 
     for human in detections:
@@ -58,7 +58,7 @@ def unhat(image: Image.Image,
                     top_class_idx = probs.top1
                     top_conf = probs.top1conf
                     
-                    logger.info(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
+                    logger.debug(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
                     
                     if top_class_idx in [hat1_idx, hat2_idx, hat3_idx] and top_conf >= 0.2:
                         is_hat = True  # 佩戴了安全帽

@@ -29,10 +29,10 @@ def smoking(image: Image.Image,
     smoke1_idx = 1  # 吸烟类别索引，需根据实际模型调整
 
     detections = detect_default_person(image, conf_threshold=conf_threshold, default_model=default_model)
-    logger.info(f"检测到 {len(detections)} 个目标:")
+    logger.debug(f"检测到 {len(detections)} 个目标:")
     
     if not detections:
-        logger.info("  [无检测结果]")
+        logger.debug("  [无检测结果]")
         return detections
 
     for person in detections:
@@ -55,7 +55,7 @@ def smoking(image: Image.Image,
                     top_class_idx = probs.top1
                     top_conf = probs.top1conf
                     
-                    logger.info(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
+                    logger.debug(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
                     
                     if top_class_idx in [smoke1_idx] and top_conf >= 0.2:
                         is_smoking = True  # 吸烟了

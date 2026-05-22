@@ -90,7 +90,7 @@ def load_chinese_font(font_size):
             return ImageFont.truetype(font_path, font_size)
         except OSError:
             pass
-    logger.info("警告：未找到可用中文字体，可能仍显示乱码")
+    logger.warning("警告：未找到可用中文字体，可能仍显示乱码")
     return ImageFont.load_default()
 
 def get_text_size(text, font_size):
@@ -226,7 +226,7 @@ def draw_detections(
             
             # 4. 处理结果（可能得到多个线段）
             if uncut_lines.is_empty:
-                logger.info("轮廓被完全切割，无剩余部分")
+                logger.debug("轮廓被完全切割，无剩余部分")
             # 5. 在图像上绘制未被切割的部分
             elif isinstance(uncut_lines, LineString):
                 # 单个线段

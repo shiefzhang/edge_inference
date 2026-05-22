@@ -242,7 +242,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="穿戴反光衣，符合安全要求",
                 viol_color=list(box_colors["vest"])
             )
-            logger.info(f"  [正常] 人员({t_id}) 穿戴反光衣，符合安全要求 (置信度:{t_conf:.2f})")
+            logger.debug(f"  [正常] 人员({t_id}) 穿戴反光衣，符合安全要求 (置信度:{t_conf:.2f})")
             detections.append(detection)
     
     if len(hat_boxes) > 0:
@@ -263,7 +263,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
                 viol_content="佩戴安全帽，符合安全要求",
                 viol_color=list(box_colors["hat"])
             )
-            logger.info(f"  [正常] 人员({t_id}) 佩戴安全帽，符合安全要求 (置信度:{t_conf:.2f})")
+            logger.debug(f"  [正常] 人员({t_id}) 佩戴安全帽，符合安全要求 (置信度:{t_conf:.2f})")
             detections.append(detection)
 
     return detections

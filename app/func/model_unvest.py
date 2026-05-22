@@ -29,10 +29,10 @@ def unvest(image: Image.Image,
     vest1_idx = 2
 
     detections = detect_human(image, conf_threshold=conf_threshold, human_model=human_model)
-    logger.info(f"检测到 {len(detections)} 个目标:")
+    logger.debug(f"检测到 {len(detections)} 个目标:")
     
     if not detections:
-        logger.info("  [无检测结果]")
+        logger.debug("  [无检测结果]")
         return detections
 
     for human in detections:
@@ -56,7 +56,7 @@ def unvest(image: Image.Image,
                     top_class_idx = probs.top1
                     top_conf = probs.top1conf
                     
-                    logger.info(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
+                    logger.debug(f"最高概率类别索引: {top_class_idx}, 置信度: {top_conf}")
                     
                     if top_class_idx in [vest1_idx] and top_conf >= 0.2:
                         is_vest = True  # 穿戴了反光衣
