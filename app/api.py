@@ -297,7 +297,7 @@ def test_connection(connection_id: str, store: JsonStore = Depends(get_store), u
     connection = store.get_connection(connection_id)
     if not connection:
         raise HTTPException(status_code=404, detail="connection not found")
-    ok, message = probe_video_source(connection.source, timeout_ms=4000)
+    ok, message = probe_video_source(connection.source, timeout_ms=get_settings().connection_test_timeout_ms)
     status_value = "online" if ok else "offline"
     updated = store.set_connection_status(connection_id, status_value)
     if not ok:

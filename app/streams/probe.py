@@ -12,12 +12,15 @@ def probe_video_source(source: str, timeout_ms: int = 4000) -> tuple[bool, str]:
 
 
 def _probe_network_source(source: str, timeout_ms: int) -> tuple[bool, str]:
+    timeout_us = str(max(1, timeout_ms) * 1000)
     command = [
         "ffprobe",
         "-v",
         "error",
         "-rtsp_transport",
         "tcp",
+        "-rw_timeout",
+        timeout_us,
         "-show_entries",
         "stream=codec_type",
         "-of",

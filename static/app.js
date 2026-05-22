@@ -67,10 +67,12 @@ const streamOptions = (selected) => state.streams.map((s) => `<option value="${s
 const byId = (id) => document.getElementById(id);
 const findStream = (id) => state.streams.find((s) => String(s.id) === String(id));
 const streamControlIsLocked = (stream) => stream?.running || !canOperate;
+const hasRunningStreams = () => state.streams.some((stream) => stream.running);
 
 async function refresh() {
   const snapshot = await api("/api/snapshot");
   Object.assign(state, snapshot);
+  syncRefreshLoop();
   if (streamControlFocused || document.querySelector("dialog[open]")) return;
   render();
 }
@@ -91,7 +93,7 @@ function stopRefreshLoop() {
 }
 
 function syncRefreshLoop() {
-  if (currentView() === "monitor") {
+  if (currentView() === "monitor" && hasRunningStreams()) {
     startRefreshLoop();
   } else {
     stopRefreshLoop();
@@ -367,7 +369,7 @@ document.body.addEventListener("click", async (event) => {
       target.disabled = true;
       target.textContent = "测试中";
       try {
-        await apiWithTimeout(`/api/connections/${target.dataset.id}/test`, { method: "POST", body: "{}" }, 7000);
+        await apiWithTimeout(`/api/connections/${target.dataset.id}/test`, { method: "POST", body: "{}" }, 20000);
         alert("连接测试成功");
       } catch (err) {
         await refresh();
