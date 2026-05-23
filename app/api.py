@@ -133,12 +133,26 @@ def upload_model_pt_file(file: UploadFile = File(...), store: JsonStore = Depend
 
 @router.get("/model-files/{file_name}/detail", response_model=ModelFileDetailOut)
 def model_file_detail(file_name: str, user: UserOut = Depends(current_user)):
+    started = time.monotonic()
     settings = get_settings()
     target = settings.models_dir / Path(file_name).name
+    logger.info("model file detail requested by=%s file=%s", user.username, target.name)
     if not target.exists() or target.suffix.lower() != ".pt":
+        logger.info("model file detail missing by=%s file=%s", user.username, target.name)
         raise HTTPException(status_code=404, detail="model file not found")
-    item = get_pt_model_cache(settings.models_dir).detail(target)
-    return to_detail(item)
+    item = get_pt_model_cache(settings.models_dir).detail(target, warmup=False)
+    detail = to_detail(item)
+    logger.info(
+        "model file detail returned by=%s file=%s loaded=%s warmup=%s labels=%s error=%s elapsed_ms=%s",
+        user.username,
+        target.name,
+        detail.loaded,
+        detail.warmup_done,
+        len(detail.labels),
+        detail.error or "",
+        round((time.monotonic() - started) * 1000, 2),
+    )
+    return detail
 
 
 @router.get("/history-logs", response_model=list[HistoryLogOut])

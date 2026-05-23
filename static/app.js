@@ -425,7 +425,9 @@ byId("toggle-sidebar")?.addEventListener("click", () => {
 });
 
 document.body.addEventListener("click", async (event) => {
-  const target = event.target;
+  const clicked = event.target instanceof Element ? event.target : null;
+  const target = clicked?.closest("[data-action], [data-dialog-close]");
+  if (!target) return;
   const closeButton = target.closest("[data-dialog-close]");
   if (closeButton) {
     event.preventDefault();
@@ -433,6 +435,7 @@ document.body.addEventListener("click", async (event) => {
     return;
   }
   const action = target.dataset.action;
+  if (action) postClientLog("ui_action", { action, stream: target.dataset.stream || "", id: target.dataset.id || "", name: target.dataset.name || "" });
   try {
     if (action === "start") {
       const id = target.dataset.stream;
@@ -488,9 +491,17 @@ document.body.addEventListener("click", async (event) => {
     if (action === "delete-user" && confirm("删除该用户？")) await api(`/api/users/${target.dataset.name}`, { method: "DELETE" });
     if (action === "edit-model-function") openModelFunctionDialog(state.model_functions.find((m) => m.id === target.dataset.id));
     if (action === "view-model-file") {
-      const detail = await api(`/api/model-files/${encodeURIComponent(target.dataset.name)}/detail`);
-      renderModelFileDetail(detail);
-      return;
+      const originalText = target.textContent;
+      target.disabled = true;
+      target.textContent = "加载中";
+      try {
+        const detail = await api(`/api/model-files/${encodeURIComponent(target.dataset.name)}/detail`);
+        renderModelFileDetail(detail);
+        return;
+      } finally {
+        target.disabled = false;
+        target.textContent = originalText || "查看";
+      }
     }
     if (action === "upload-pt") target.parentElement.querySelector(`input[data-kind="pt"][data-id="${target.dataset.id}"]`)?.click();
     if (action === "upload-code") target.parentElement.querySelector(`input[data-kind="code"][data-id="${target.dataset.id}"]`)?.click();

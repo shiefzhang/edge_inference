@@ -52,8 +52,8 @@ class PtModelCache:
             raise RuntimeError(item.error or f"failed to load {item.path.name}")
         return item.model
 
-    def detail(self, path: Path | str) -> CachedPtModel:
-        return self._load(path, warmup=True)
+    def detail(self, path: Path | str, warmup: bool = False) -> CachedPtModel:
+        return self._load(path, warmup=warmup)
 
     def _load(self, path: Path | str, warmup: bool) -> CachedPtModel:
         resolved = self._resolve(path)
