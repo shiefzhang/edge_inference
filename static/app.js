@@ -565,12 +565,16 @@ document.body.addEventListener("click", async (event) => {
     if (action === "edit-connection") openConnectionDialog(state.connections.find((c) => c.id === target.dataset.id));
     if (action === "delete-connection" && confirm("删除该连接？")) await api(`/api/connections/${target.dataset.id}`, { method: "DELETE" });
     if (action === "test-connection") {
+      const startedAt = performance.now();
+      postClientLog("connection_test_click", { id: target.dataset.id });
       target.disabled = true;
       target.textContent = "测试中";
       try {
         await apiWithTimeout(`/api/connections/${target.dataset.id}/test`, { method: "POST", body: "{}" }, 20000);
+        postClientLog("connection_test_done", { id: target.dataset.id, ok: "true", elapsed_ms: String(Math.round(performance.now() - startedAt)) });
         alert("连接测试成功");
       } catch (err) {
+        postClientLog("connection_test_done", { id: target.dataset.id, ok: "false", elapsed_ms: String(Math.round(performance.now() - startedAt)), message: err.message });
         await refresh();
         throw err;
       } finally {

@@ -337,16 +337,41 @@ def delete_connection(connection_id: str, store: JsonStore = Depends(get_store),
 
 @router.post("/connections/{connection_id}/test", response_model=ConnectionOut)
 def test_connection(connection_id: str, store: JsonStore = Depends(get_store), user: UserOut = Depends(require_roles(Role.admin, Role.operator))):
+    started = time.monotonic()
+    logger.info("connection test requested by=%s id=%s", user.username, connection_id)
+    step_started = time.monotonic()
     connection = store.get_connection(connection_id)
+    logger.info("connection test load config id=%s found=%s elapsed_ms=%s", connection_id, bool(connection), round((time.monotonic() - step_started) * 1000, 2))
     if not connection:
         raise HTTPException(status_code=404, detail="connection not found")
+    step_started = time.monotonic()
     ok, message = probe_video_source(connection.source, timeout_ms=get_settings().connection_test_timeout_ms)
+    logger.info("connection test probe id=%s ok=%s elapsed_ms=%s", connection_id, ok, round((time.monotonic() - step_started) * 1000, 2))
     status_value = "online" if ok else "offline"
+    step_started = time.monotonic()
     updated = store.set_connection_status(connection_id, status_value)
+    logger.info("connection test update status id=%s status=%s elapsed_ms=%s", connection_id, status_value, round((time.monotonic() - step_started) * 1000, 2))
+    step_started = time.monotonic()
     if not ok:
         store.add_history_log(user.username, "test", "connection", connection_id, result="failed", message=message)
+        logger.info(
+            "connection test returned id=%s ok=%s total_elapsed_ms=%s history_elapsed_ms=%s message=%s",
+            connection_id,
+            ok,
+            round((time.monotonic() - started) * 1000, 2),
+            round((time.monotonic() - step_started) * 1000, 2),
+            message,
+        )
         raise HTTPException(status_code=400, detail=message)
     store.add_history_log(user.username, "test", "connection", connection_id, message=message)
+    logger.info(
+        "connection test returned id=%s ok=%s total_elapsed_ms=%s history_elapsed_ms=%s message=%s",
+        connection_id,
+        ok,
+        round((time.monotonic() - started) * 1000, 2),
+        round((time.monotonic() - step_started) * 1000, 2),
+        message,
+    )
     return updated
 
 
