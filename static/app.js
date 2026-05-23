@@ -184,6 +184,50 @@ function renderStreams() {
     `;
   }).join("");
   logMonitorImageMetrics();
+  bindStreamButtons();
+}
+
+function bindStreamButtons() {
+  document.querySelectorAll(".stream-card button[data-action='start'], .stream-card button[data-action='stop']").forEach((button) => {
+    if (button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handleStreamButton(button);
+    });
+  });
+}
+
+async function handleStreamButton(button) {
+  const action = button.dataset.action;
+  const streamId = button.dataset.stream;
+  postClientLog("stream_button_click", { action, stream: streamId, disabled: String(button.disabled) });
+  if (!canOperate || button.disabled) return;
+  const card = button.closest(".stream-card");
+  try {
+    document.activeElement?.blur();
+    button.disabled = true;
+    streamControlFocused = false;
+    if (action === "start") {
+      const connectionId = card.querySelector(".stream-connection").value;
+      const modelId = card.querySelector(".stream-model").value;
+      await api(`/api/streams/${streamId}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
+      scheduleResourceRefresh();
+      return;
+    }
+    if (action === "stop") {
+      card.querySelector(".video-box").innerHTML = "停止中";
+      card.querySelector(".stream-status").textContent = "停止中";
+      card.querySelector(".stream-status").classList.remove("running");
+      await api(`/api/streams/${streamId}/stop`, { method: "POST", body: "{}" });
+      scheduleResourceRefresh();
+      return;
+    }
+  } catch (err) {
+    alert(err.message);
+    await refresh({ forceRender: true });
+  }
 }
 
 function updateStreamStats() {
@@ -466,6 +510,7 @@ document.body.addEventListener("click", async (event) => {
   if (action) postClientLog("ui_action", { action, stream: target.dataset.stream || "", id: target.dataset.id || "", name: target.dataset.name || "" });
   try {
     if (action === "start") {
+      if (target.dataset.bound === "1") return;
       const id = target.dataset.stream;
       const card = target.closest(".stream-card");
       const connectionId = card.querySelector(".stream-connection").value;
@@ -490,6 +535,7 @@ document.body.addEventListener("click", async (event) => {
       }
     }
     if (action === "stop") {
+      if (target.dataset.bound === "1") return;
       document.activeElement?.blur();
       target.disabled = true;
       streamControlFocused = false;
