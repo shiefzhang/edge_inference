@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.dependencies import current_user, get_store, require_roles
@@ -410,14 +410,52 @@ def switch_model(stream_id: int, data: StreamModelIn, request: Request, user: Us
 def video_stream(stream_id: int, request: Request, user: UserOut = Depends(current_user)):
     def frames():
         logger.info("video stream %s opened by=%s", stream_id, user.username)
+        yielded = 0
+        misses = 0
+        started = time.monotonic()
+        last_log = started
         try:
             while request.app.state.streams.is_running(stream_id):
                 jpeg = request.app.state.streams.latest_jpeg(stream_id)
                 if jpeg:
+                    yielded += 1
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+                else:
+                    misses += 1
+                now = time.monotonic()
+                if now - last_log >= 5:
+                    status = request.app.state.streams.status(stream_id)
+                    logger.info(
+                        "video stream %s alive by=%s yielded=%s misses=%s worker_running=%s frames=%s fps=%s last_error=%s",
+                        stream_id,
+                        user.username,
+                        yielded,
+                        misses,
+                        status.running,
+                        status.frames,
+                        status.fps,
+                        status.last_error or "",
+                    )
+                    last_log = now
                 time.sleep(0.08)
         finally:
-            logger.info("video stream %s closed by=%s", stream_id, user.username)
+            elapsed = round((time.monotonic() - started) * 1000, 2)
+            try:
+                status = request.app.state.streams.status(stream_id)
+                logger.info(
+                    "video stream %s closed by=%s yielded=%s misses=%s elapsed_ms=%s worker_running=%s frames=%s fps=%s last_error=%s",
+                    stream_id,
+                    user.username,
+                    yielded,
+                    misses,
+                    elapsed,
+                    status.running,
+                    status.frames,
+                    status.fps,
+                    status.last_error or "",
+                )
+            except KeyError:
+                logger.info("video stream %s closed by=%s yielded=%s misses=%s elapsed_ms=%s status=missing", stream_id, user.username, yielded, misses, elapsed)
 
     try:
         request.app.state.streams.status(stream_id)
@@ -425,3 +463,10 @@ def video_stream(stream_id: int, request: Request, user: UserOut = Depends(curre
         raise HTTPException(status_code=404, detail="stream not found") from exc
 
     return StreamingResponse(frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+
+@router.post("/client-log")
+def client_log(payload: dict = Body(...), user: UserOut = Depends(current_user)):
+    event = str(payload.get("event") or "client")
+    logger.info("client log by=%s event=%s payload=%s", user.username, event, payload)
+    return {"ok": True}

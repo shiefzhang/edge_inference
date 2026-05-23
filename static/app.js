@@ -29,6 +29,14 @@ const api = async (url, options = {}) => {
   return response.json();
 };
 
+const postClientLog = (event, payload = {}) => {
+  fetch("/api/client-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event, ...payload }),
+  }).catch(() => {});
+};
+
 const apiWithTimeout = async (url, options = {}, timeoutMs = 6000) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -81,6 +89,11 @@ async function refresh(options = {}) {
   Object.assign(state, snapshot);
   syncRefreshLoop();
   if (!options.forceRender && (streamControlFocused || document.querySelector("dialog[open]"))) return;
+  if (options.statsOnly) {
+    renderMetrics();
+    updateStreamStats();
+    return;
+  }
   render();
 }
 
@@ -90,7 +103,7 @@ function currentView() {
 
 function startRefreshLoop() {
   if (refreshTimer) return;
-  refreshTimer = setInterval(refresh, 3000);
+  refreshTimer = setInterval(() => refresh({ statsOnly: true }), 3000);
 }
 
 function stopRefreshLoop() {
@@ -112,12 +125,7 @@ function scheduleResourceRefresh() {
 }
 
 function render() {
-  byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/${state.streams.length}`;
-  byId("metric-models").textContent = state.models.length;
-  byId("metric-connections").textContent = state.connections.length;
-  byId("metric-memory").textContent = formatMemory(state.memory);
-  byId("metric-memory-label").textContent = `${state.memory?.label || "显存"}占用`;
-  byId("metric-role").textContent = roleName(window.CURRENT_ROLE);
+  renderMetrics();
   renderStreams();
   renderConnections();
   renderModelFiles();
@@ -125,6 +133,15 @@ function render() {
   renderUsers();
   renderHistoryLogs();
   fillModelSelects();
+}
+
+function renderMetrics() {
+  byId("metric-online").textContent = `${state.streams.filter((s) => s.running).length}/${state.streams.length}`;
+  byId("metric-models").textContent = state.models.length;
+  byId("metric-connections").textContent = state.connections.length;
+  byId("metric-memory").textContent = formatMemory(state.memory);
+  byId("metric-memory-label").textContent = `${state.memory?.label || "显存"}占用`;
+  byId("metric-role").textContent = roleName(window.CURRENT_ROLE);
 }
 
 function applyViewTheme(view) {
@@ -140,7 +157,6 @@ function renderStreams() {
   grid.innerHTML = state.streams.map((stream) => {
     const running = stream.running ? "running" : "";
     const fpsOverlay = stream.running ? `<span class="video-fps">FPS: ${Number(stream.fps || 0).toFixed(1)}</span>` : "";
-    const img = stream.running ? `<img src="/api/video/${stream.id}?t=${Date.now()}" alt="通道 ${stream.id}">${fpsOverlay}` : "未启动";
     const draft = streamDrafts[stream.id] || {};
     const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
     const selectedModel = stream.model_id ?? draft.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "";
@@ -149,9 +165,9 @@ function renderStreams() {
     const stopDisabled = canOperate && stream.running ? "" : "disabled";
     streamDrafts[stream.id] = { connection_id: selectedConnection, model_id: selectedModel };
     return `
-      <article class="stream-card">
-        <div class="stream-head"><h3>通道 ${stream.id}</h3><span class="status ${running}">${stream.running ? "在线" : "离线"}</span></div>
-        <div class="video-box">${img}</div>
+      <article class="stream-card" data-stream="${stream.id}">
+        <div class="stream-head"><h3>通道 ${stream.id}</h3><span class="status stream-status ${running}">${stream.running ? "在线" : "离线"}</span></div>
+        <div class="video-box">${stream.running ? `<img data-stream="${stream.id}" src="/api/video/${stream.id}" alt="通道 ${stream.id}">${fpsOverlay}` : "未启动"}</div>
         <div class="stream-controls">
           <select class="stream-connection" data-stream="${stream.id}" ${configDisabled}>${connectionOptions(selectedConnection)}</select>
           <select class="stream-model" data-stream="${stream.id}" ${configDisabled}>${modelOptions(selectedModel, true)}</select>
@@ -167,6 +183,55 @@ function renderStreams() {
       </article>
     `;
   }).join("");
+  logMonitorImageMetrics();
+}
+
+function updateStreamStats() {
+  let needsRender = false;
+  state.streams.forEach((stream) => {
+    const card = document.querySelector(`.stream-card[data-stream="${stream.id}"]`);
+    if (!card) return;
+    const hasVideo = Boolean(card.querySelector(".video-box img"));
+    if (hasVideo !== Boolean(stream.running)) {
+      needsRender = true;
+      return;
+    }
+    card.querySelector(".stream-status").textContent = stream.running ? "在线" : "离线";
+    card.querySelector(".stream-status").classList.toggle("running", Boolean(stream.running));
+    const fps = card.querySelector(".video-fps");
+    if (fps) fps.textContent = `FPS: ${Number(stream.fps || 0).toFixed(1)}`;
+    const meta = card.querySelector(".stream-meta");
+    if (meta) {
+      meta.innerHTML = `
+          FPS: ${stream.fps} · 帧数: ${stream.frames}<br>
+          RTSP: ${stream.rtsp_url}<br>
+          ${stream.last_error ? `<span class="danger-text">错误: ${stream.last_error}</span>` : ""}
+        `;
+    }
+  });
+  if (needsRender) render();
+}
+
+function logMonitorImageMetrics() {
+  document.querySelectorAll("#monitor .video-box img").forEach((img) => {
+    if (img.dataset.metricsBound === "1") return;
+    img.dataset.metricsBound = "1";
+    img.addEventListener("load", () => {
+      const box = img.closest(".video-box")?.getBoundingClientRect();
+      const payload = {
+        stream: img.dataset.stream,
+        natural: `${img.naturalWidth}x${img.naturalHeight}`,
+        rendered: `${Math.round(img.clientWidth)}x${Math.round(img.clientHeight)}`,
+        box: box ? `${Math.round(box.width)}x${Math.round(box.height)}` : "",
+        objectFit: getComputedStyle(img).objectFit,
+      };
+      console.debug("monitor video layout", payload);
+      postClientLog("monitor_video_layout", payload);
+    });
+    img.addEventListener("error", () => {
+      postClientLog("monitor_video_error", { stream: img.dataset.stream, src: img.getAttribute("src") });
+    });
+  });
 }
 
 function renderConnections() {

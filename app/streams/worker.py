@@ -40,12 +40,14 @@ class StreamWorker:
         self._latest_jpeg: Optional[bytes] = None
         self._publisher: Optional[RtspPublisher] = None
         self._run_generation = 0
+        self._stage = "idle"
 
     def start(self, source: str, model_id: Optional[str], connection_id: Optional[str], rtsp_enabled: bool = True) -> None:
         self.stop()
         with self._lock:
             self.state = WorkerState(True, source, connection_id, model_id)
             self._run_generation += 1
+            self._stage = "starting"
             stop_event = threading.Event()
             self._stop_event = stop_event
             self._thread = threading.Thread(target=self._run, args=(source, rtsp_enabled, stop_event, self._run_generation), daemon=True, name=f"stream-{self.stream_id}")
@@ -59,6 +61,9 @@ class StreamWorker:
             publisher = self._publisher
             generation = self._run_generation
             frames = self.state.frames
+            fps = self.state.fps
+            last_error = self.state.last_error
+            stage = self._stage
             self.state.running = False
             self._publisher = None
             self._stop_event = None
@@ -66,10 +71,13 @@ class StreamWorker:
             if not thread or not thread.is_alive():
                 self._thread = None
         logger.info(
-            "stream %s stop requested generation=%s frames=%s thread_alive=%s publisher_active=%s",
+            "stream %s stop requested generation=%s frames=%s fps=%.2f stage=%s last_error=%s thread_alive=%s publisher_active=%s",
             self.stream_id,
             generation,
             frames,
+            fps,
+            stage,
+            last_error or "",
             bool(thread and thread.is_alive()),
             bool(publisher),
         )
@@ -86,7 +94,19 @@ class StreamWorker:
         with self._lock:
             still_alive = bool(thread and thread.is_alive())
             running = self.state.running
-        logger.info("stream %s stop returned generation=%s thread_alive=%s running=%s", self.stream_id, generation, still_alive, running)
+            stage = self._stage
+            frames = self.state.frames
+            fps = self.state.fps
+        logger.info(
+            "stream %s stop returned generation=%s thread_alive=%s running=%s frames=%s fps=%.2f stage=%s",
+            self.stream_id,
+            generation,
+            still_alive,
+            running,
+            frames,
+            fps,
+            stage,
+        )
 
     def switch_model(self, model_id: str) -> None:
         if model_id not in self.registry.modules:
@@ -112,6 +132,8 @@ class StreamWorker:
         settings = get_settings()
         capture_source = int(source) if source.isdigit() else source
         cap = cv2.VideoCapture()
+        self._set_stage("capture_opening", generation)
+        logger.info("stream %s opening capture generation=%s source=%s", self.stream_id, generation, source)
         cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, settings.capture_open_timeout_ms)
         cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, settings.capture_read_timeout_ms)
         cap.open(capture_source)
@@ -121,6 +143,17 @@ class StreamWorker:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or settings.frame_width
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or settings.frame_height
         fps = self._normalize_capture_fps(cap.get(cv2.CAP_PROP_FPS), settings.frame_fps)
+        self._set_stage("capture_opened", generation)
+        logger.info(
+            "stream %s capture opened generation=%s source=%s size=%sx%s capture_fps=%s rtsp=%s",
+            self.stream_id,
+            generation,
+            source,
+            width,
+            height,
+            fps,
+            rtsp_enabled,
+        )
         if rtsp_enabled and not stop_event.is_set():
             publisher: Optional[RtspPublisher] = RtspPublisher(self.stream_id, width, height, fps)
             with self._lock:
@@ -129,16 +162,20 @@ class StreamWorker:
                 else:
                     publisher = None
             if publisher:
+                self._set_stage("rtsp_starting", generation)
                 publisher.start()
+                logger.info("stream %s rtsp publisher started generation=%s url=%s", self.stream_id, generation, publisher.url)
                 if stop_event.is_set():
                     with self._lock:
                         if self._publisher is publisher:
                             self._publisher = None
                     publisher.stop()
         last_tick = time.time()
+        last_report = last_tick
         last_frames = 0
         try:
             while not stop_event.is_set():
+                self._set_stage("capture_read", generation)
                 ok, frame = cap.read()
                 if not ok:
                     if stop_event.is_set():
@@ -149,6 +186,7 @@ class StreamWorker:
                 model_id = self.snapshot().model_id
                 if model_id:
                     try:
+                        self._set_stage(f"inference:{model_id}", generation)
                         result = self.registry.infer(model_id, frame, timeout=settings.inference_timeout_seconds, stop_event=stop_event)
                         frame = result.annotated_frame if result.annotated_frame is not None else draw_result(frame, result)
                         with self._lock:
@@ -163,6 +201,7 @@ class StreamWorker:
                             self.state.last_error = message
                 if stop_event.is_set():
                     break
+                self._set_stage("encode_jpeg", generation)
                 jpeg = encode_jpeg(frame)
                 with self._lock:
                     self._latest_jpeg = jpeg
@@ -172,15 +211,41 @@ class StreamWorker:
                     with self._lock:
                         self.state.fps = (self.state.frames - last_frames) / (now - last_tick)
                         last_frames = self.state.frames
+                        current_frames = self.state.frames
+                        current_fps = self.state.fps
+                        last_error = self.state.last_error
                     last_tick = now
+                    if now - last_report >= 5:
+                        logger.info(
+                            "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s last_error=%s",
+                            self.stream_id,
+                            generation,
+                            current_frames,
+                            current_fps,
+                            self._stage,
+                            last_error or "",
+                        )
+                        last_report = now
+                    logger.debug(
+                        "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s last_error=%s",
+                        self.stream_id,
+                        generation,
+                        current_frames,
+                        current_fps,
+                        self._stage,
+                        last_error or "",
+                    )
                 with self._lock:
                     publisher = self._publisher if generation == self._run_generation else None
                 if publisher:
+                    self._set_stage("rtsp_write", generation)
                     publisher.write(frame)
+                self._set_stage("loop_wait", generation)
         except Exception as exc:
             logger.exception("stream %s stopped by worker error", self.stream_id)
             self._set_error(str(exc), generation)
         finally:
+            logger.info("stream %s worker cleanup begin generation=%s stage=%s", self.stream_id, generation, self._stage)
             cap.release()
             with self._lock:
                 publisher = self._publisher if generation == self._run_generation else None
@@ -191,8 +256,10 @@ class StreamWorker:
             with self._lock:
                 if generation == self._run_generation:
                     self.state.running = False
+                    self._stage = "stopped"
                     if self._thread is threading.current_thread():
                         self._thread = None
+            logger.info("stream %s worker cleanup done generation=%s", self.stream_id, generation)
 
     def _set_error(self, message: str, generation: Optional[int] = None) -> None:
         with self._lock:
@@ -200,6 +267,13 @@ class StreamWorker:
                 return
             self.state.last_error = message
             self.state.running = False
+            self._stage = "error"
+
+    def _set_stage(self, stage: str, generation: Optional[int] = None) -> None:
+        with self._lock:
+            if generation is not None and generation != self._run_generation:
+                return
+            self._stage = stage
 
     @staticmethod
     def _normalize_capture_fps(raw_fps: float, fallback_fps: int) -> int:
