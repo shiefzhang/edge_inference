@@ -65,6 +65,8 @@ class StreamWorker:
             last_error = self.state.last_error
             stage = self._stage
             self.state.running = False
+            self.state.fps = 0.0
+            self.state.frames = 0
             self._publisher = None
             self._stop_event = None
             self._latest_jpeg = None

@@ -1,5 +1,6 @@
 const state = { models: [], model_files: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [], memory: null };
 const streamDrafts = {};
+const streamVideoTokens = {};
 let streamControlFocused = false;
 let refreshTimer = null;
 
@@ -157,6 +158,9 @@ function renderStreams() {
   grid.innerHTML = state.streams.map((stream) => {
     const running = stream.running ? "running" : "";
     const fpsOverlay = stream.running ? `<span class="video-fps">FPS: ${Number(stream.fps || 0).toFixed(1)}</span>` : "";
+    if (stream.running && !streamVideoTokens[stream.id]) streamVideoTokens[stream.id] = `${Date.now()}-${stream.frames || 0}`;
+    if (!stream.running) delete streamVideoTokens[stream.id];
+    const videoSrc = `/api/video/${stream.id}?run=${encodeURIComponent(streamVideoTokens[stream.id] || "")}`;
     const draft = streamDrafts[stream.id] || {};
     const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
     const selectedModel = stream.model_id ?? draft.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "";
@@ -167,7 +171,7 @@ function renderStreams() {
     return `
       <article class="stream-card" data-stream="${stream.id}">
         <div class="stream-head"><h3>通道 ${stream.id}</h3><span class="status stream-status ${running}">${stream.running ? "在线" : "离线"}</span></div>
-        <div class="video-box">${stream.running ? `<img data-stream="${stream.id}" src="/api/video/${stream.id}" alt="通道 ${stream.id}">${fpsOverlay}` : "未启动"}</div>
+        <div class="video-box">${stream.running ? `<img data-stream="${stream.id}" src="${videoSrc}" alt="通道 ${stream.id}">${fpsOverlay}` : "未启动"}</div>
         <div class="stream-controls">
           <select class="stream-connection" data-stream="${stream.id}" ${configDisabled}>${connectionOptions(selectedConnection)}</select>
           <select class="stream-model" data-stream="${stream.id}" ${configDisabled}>${modelOptions(selectedModel, true)}</select>
@@ -213,6 +217,8 @@ async function handleStreamButton(button) {
       const connectionId = card.querySelector(".stream-connection").value;
       const modelId = card.querySelector(".stream-model").value;
       await api(`/api/streams/${streamId}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
+      streamVideoTokens[streamId] = `${Date.now()}-start`;
+      await refresh({ forceRender: true });
       scheduleResourceRefresh();
       return;
     }
@@ -221,6 +227,8 @@ async function handleStreamButton(button) {
       card.querySelector(".stream-status").textContent = "停止中";
       card.querySelector(".stream-status").classList.remove("running");
       await api(`/api/streams/${streamId}/stop`, { method: "POST", body: "{}" });
+      delete streamVideoTokens[streamId];
+      await refresh({ forceRender: true });
       scheduleResourceRefresh();
       return;
     }
