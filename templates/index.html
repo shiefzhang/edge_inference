@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Edge Inference</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260523-stream-restart-token">
+    <link rel="stylesheet" href="/static/styles.css?v=20260523-model-memory-list">
   </head>
   <body>
     <div class="shell theme-monitor">
@@ -69,7 +69,7 @@
                 <button id="upload-model-file" type="button">上传 PT</button>
               </div>
               <table class="model-file-table">
-                <thead><tr><th>文件名</th><th>大小</th><th>更新时间</th><th>操作</th></tr></thead>
+                <thead><tr><th>文件名</th><th>大小</th><th>显存占用</th><th>更新时间</th><th>操作</th></tr></thead>
                 <tbody id="model-file-rows"></tbody>
               </table>
               <input id="model-file-input" type="file" accept=".pt" hidden>
@@ -167,6 +167,6 @@
     </dialog>
 
     <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
-    <script src="/static/app.js?v=20260523-stream-restart-token"></script>
+    <script src="/static/app.js?v=20260523-model-memory-list"></script>
   </body>
 </html>

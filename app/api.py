@@ -52,14 +52,19 @@ def _save_upload(file: UploadFile, target: Path) -> None:
 
 def _list_model_files() -> list[ModelFileOut]:
     settings = get_settings()
+    cache = get_pt_model_cache(settings.models_dir)
     files = []
     for path in sorted(settings.models_dir.glob("*.pt"), key=lambda item: item.name.lower()):
         stat = path.stat()
+        cached = cache.peek(path)
         files.append(
             ModelFileOut(
                 name=path.name,
                 size=stat.st_size,
                 modified_time=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+                loaded=cached.loaded,
+                memory_allocated_mb=cached.memory_allocated_mb,
+                memory_reserved_mb=cached.memory_reserved_mb,
             )
         )
     return files
@@ -128,7 +133,15 @@ def upload_model_pt_file(file: UploadFile = File(...), store: JsonStore = Depend
     get_pt_model_cache(get_settings().models_dir).get(target)
     store.add_history_log(user.username, "upload_pt", "model_file", safe_name, message=safe_name)
     stat = target.stat()
-    return ModelFileOut(name=target.name, size=stat.st_size, modified_time=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat())
+    cached = get_pt_model_cache(get_settings().models_dir).peek(target)
+    return ModelFileOut(
+        name=target.name,
+        size=stat.st_size,
+        modified_time=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        loaded=cached.loaded,
+        memory_allocated_mb=cached.memory_allocated_mb,
+        memory_reserved_mb=cached.memory_reserved_mb,
+    )
 
 
 @router.get("/model-files/{file_name}/detail", response_model=ModelFileDetailOut)

@@ -87,6 +87,9 @@ class ModelFileOut(BaseModel):
     name: str
     size: int
     modified_time: str
+    loaded: bool = False
+    memory_allocated_mb: int = 0
+    memory_reserved_mb: int = 0
 
 
 class ModelLabelOut(BaseModel):

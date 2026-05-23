@@ -337,6 +337,7 @@ function renderModelFiles() {
     <tr>
       <td class="cell-entry" title="${escapeAttr(file.name)}">${file.name}</td>
       <td>${formatBytes(file.size)}</td>
+      <td>${formatModelMemory(file)}</td>
       <td>${formatTime(file.modified_time)}</td>
       <td class="actions"><button class="ghost" data-action="view-model-file" data-name="${escapeAttr(file.name)}">查看</button></td>
     </tr>
@@ -393,6 +394,14 @@ function formatBytes(value) {
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
   if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${size} B`;
+}
+
+function formatModelMemory(file) {
+  const allocated = Number(file.memory_allocated_mb || 0);
+  const reserved = Number(file.memory_reserved_mb || 0);
+  if (!file.loaded && !allocated && !reserved) return "-";
+  if (reserved && reserved !== allocated) return `${allocated} MB / ${reserved} MB`;
+  return `${allocated} MB`;
 }
 
 function shortConfig(config) {

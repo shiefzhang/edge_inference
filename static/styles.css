@@ -94,10 +94,11 @@ select:disabled { opacity: .65; cursor: not-allowed; background: #eef2f6; color:
 .section-head h2 { margin: 0; }
 .model-management-grid { display: grid; gap: 16px; }
 .model-panel { overflow: auto; padding: 12px; }
-.model-file-table { table-layout: fixed; min-width: 780px; }
-.model-file-table th:nth-child(1) { width: 340px; }
-.model-file-table th:nth-child(2) { width: 120px; }
-.model-file-table th:nth-child(4) { width: 100px; }
+.model-file-table { table-layout: fixed; min-width: 900px; }
+.model-file-table th:nth-child(1) { width: 320px; }
+.model-file-table th:nth-child(2) { width: 110px; }
+.model-file-table th:nth-child(3) { width: 130px; }
+.model-file-table th:nth-child(5) { width: 100px; }
 table { width: 100%; border-collapse: collapse; overflow: hidden; }
 table { table-layout: auto; }
 th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }

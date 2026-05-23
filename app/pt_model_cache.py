@@ -55,6 +55,11 @@ class PtModelCache:
     def detail(self, path: Path | str, warmup: bool = False) -> CachedPtModel:
         return self._load(path, warmup=warmup)
 
+    def peek(self, path: Path | str) -> CachedPtModel:
+        resolved = self._resolve(path)
+        with self._lock:
+            return self._items.get(resolved) or CachedPtModel(resolved)
+
     def _load(self, path: Path | str, warmup: bool) -> CachedPtModel:
         resolved = self._resolve(path)
         with self._lock:
