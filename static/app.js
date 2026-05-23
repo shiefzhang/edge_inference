@@ -268,18 +268,13 @@ function fitMonitorImage(img) {
   const box = img.closest(".video-box");
   if (!box || !img.naturalWidth || !img.naturalHeight) return null;
   const boxRect = box.getBoundingClientRect();
-  const imageRatio = img.naturalWidth / img.naturalHeight;
-  const boxRatio = boxRect.width / boxRect.height;
+  img.style.position = "absolute";
+  img.style.inset = "0";
   img.style.objectFit = "contain";
-  img.style.maxWidth = "100%";
-  img.style.maxHeight = "100%";
-  if (imageRatio < boxRatio) {
-    img.style.width = "auto";
-    img.style.height = "100%";
-  } else {
-    img.style.width = "100%";
-    img.style.height = "auto";
-  }
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.maxWidth = "none";
+  img.style.maxHeight = "none";
   return {
     stream: img.dataset.stream,
     natural: `${img.naturalWidth}x${img.naturalHeight}`,
@@ -288,6 +283,7 @@ function fitMonitorImage(img) {
     objectFit: getComputedStyle(img).objectFit,
     inlineWidth: img.style.width,
     inlineHeight: img.style.height,
+    mode: "absolute-contain",
   };
 }
 
