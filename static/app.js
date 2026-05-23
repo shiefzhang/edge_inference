@@ -212,22 +212,50 @@ function updateStreamStats() {
   if (needsRender) render();
 }
 
+function fitMonitorImage(img) {
+  const box = img.closest(".video-box");
+  if (!box || !img.naturalWidth || !img.naturalHeight) return null;
+  const boxRect = box.getBoundingClientRect();
+  const imageRatio = img.naturalWidth / img.naturalHeight;
+  const boxRatio = boxRect.width / boxRect.height;
+  img.style.objectFit = "contain";
+  img.style.maxWidth = "100%";
+  img.style.maxHeight = "100%";
+  if (imageRatio < boxRatio) {
+    img.style.width = "auto";
+    img.style.height = "100%";
+  } else {
+    img.style.width = "100%";
+    img.style.height = "auto";
+  }
+  return {
+    stream: img.dataset.stream,
+    natural: `${img.naturalWidth}x${img.naturalHeight}`,
+    rendered: `${Math.round(img.clientWidth)}x${Math.round(img.clientHeight)}`,
+    box: `${Math.round(boxRect.width)}x${Math.round(boxRect.height)}`,
+    objectFit: getComputedStyle(img).objectFit,
+    inlineWidth: img.style.width,
+    inlineHeight: img.style.height,
+  };
+}
+
+function reportMonitorImageMetrics(img, reason) {
+  const payload = fitMonitorImage(img);
+  if (!payload) return;
+  payload.reason = reason;
+  console.debug("monitor video layout", payload);
+  postClientLog("monitor_video_layout", payload);
+}
+
 function logMonitorImageMetrics() {
   document.querySelectorAll("#monitor .video-box img").forEach((img) => {
     if (img.dataset.metricsBound === "1") return;
     img.dataset.metricsBound = "1";
     img.addEventListener("load", () => {
-      const box = img.closest(".video-box")?.getBoundingClientRect();
-      const payload = {
-        stream: img.dataset.stream,
-        natural: `${img.naturalWidth}x${img.naturalHeight}`,
-        rendered: `${Math.round(img.clientWidth)}x${Math.round(img.clientHeight)}`,
-        box: box ? `${Math.round(box.width)}x${Math.round(box.height)}` : "",
-        objectFit: getComputedStyle(img).objectFit,
-      };
-      console.debug("monitor video layout", payload);
-      postClientLog("monitor_video_layout", payload);
+      reportMonitorImageMetrics(img, "load");
     });
+    if (img.complete) setTimeout(() => reportMonitorImageMetrics(img, "complete"), 0);
+    setTimeout(() => reportMonitorImageMetrics(img, "settled"), 1200);
     img.addEventListener("error", () => {
       postClientLog("monitor_video_error", { stream: img.dataset.stream, src: img.getAttribute("src") });
     });

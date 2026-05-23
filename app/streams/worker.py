@@ -217,22 +217,26 @@ class StreamWorker:
                     last_tick = now
                     if now - last_report >= 5:
                         logger.info(
-                            "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s last_error=%s",
+                            "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s frame_size=%sx%s last_error=%s",
                             self.stream_id,
                             generation,
                             current_frames,
                             current_fps,
                             self._stage,
+                            frame.shape[1],
+                            frame.shape[0],
                             last_error or "",
                         )
                         last_report = now
                     logger.debug(
-                        "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s last_error=%s",
+                        "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s frame_size=%sx%s last_error=%s",
                         self.stream_id,
                         generation,
                         current_frames,
                         current_fps,
                         self._stage,
+                        frame.shape[1],
+                        frame.shape[0],
                         last_error or "",
                     )
                 with self._lock:
