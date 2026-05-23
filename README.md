@@ -1,43 +1,25 @@
 # Edge Inference 视频推理管控平台
 
-这是一个面向 Jetson 边缘盒子的 FastAPI 视频推理管控平台，用于管理多路视频输入、YOLO 推理函数、浏览器预览和 RTSP 输出。
+Edge Inference 是面向 Jetson 和边缘盒子的本地视频推理管控平台。系统通过 FastAPI 提供后台管理界面，支持多路视频输入、PT 权重管理、Python 模型逻辑管理、实时推理预览、报警信息输出和 RTSP 转推。
 
-## 功能特性
+## 功能总览
 
-- 支持 4 路视频通道并行运行。
-- 支持每路视频独立选择和切换推理函数。
-- 支持 RTSP、视频文件、USB 摄像头连接配置。
-- 支持浏览器预览带红框/蓝框标注的推理结果。
-- 支持通过 FFmpeg 推送 H264 RTSP 流到 MediaMTX。
-- 支持固定三角色用户管理：管理员、操作员、只读用户。
-- 支持模型函数增删改查。
-- 支持上传替换 `.pt` 权重文件。
-- 支持上传替换 Python 推理逻辑代码。
-
-## 模型函数
-
-平台管理的不是单纯的 `.pt` 文件，而是 Python 推理函数。每个模型函数由以下内容组成：
-
-- 函数 ID
-- 名称
-- 类型
-- Python 入口
-- 配置 JSON
-- 启用状态
-
-例如安全帽检测可以封装为一个完整推理函数：先调用人员检测模型，再裁剪人框，最后调用安全帽分类模型。后续升级推理流程时，可以上传新的 Python 逻辑代码替换。
-
-上传的 Python 文件需要提供：
-
-```python
-def build_model(definition, models_dir, modules):
-    ...
-```
-
-## 作者信息
-
-- 作者：Pyrrhus
-- 邮箱：zhangxuefeng@batonsoft.com
+- **视频监控**：支持多通道并行运行，可在页面中启动、停止、删除通道，并为每个通道独立选择输入连接和推理模型。
+- **无模型预览**：通道模型可选择“无模型”，用于只看原始视频、排查摄像头和推流问题。
+- **实时 FPS**：通道画面右上角显示实时 FPS，通道卡片下方显示累计帧数。
+- **纵向画面适配**：视频监控页面中的浏览器预览使用等比例包含模式，纵向摄像头画面会缩小完整显示，不影响 RTSP 输出原始分辨率。
+- **RTSP、文件、USB 输入**：连接列表支持 RTSP 地址、本地视频文件路径、USB 摄像头编号。
+- **快速连接测试**：RTSP 连接测试优先使用快速 ffprobe 参数，并在日志中记录各阶段耗时。
+- **快速通道打开**：通道运行时为网络流设置 OpenCV FFmpeg 快速打开参数，降低 RTSP 探测和等待时间。
+- **RTSP 输出**：通道启动后可通过 FFmpeg 推送到 MediaMTX，供其他客户端拉流。
+- **模型管理拆分**：模型管理分为 PT 文件管理和模型逻辑管理两块。
+- **PT 文件管理**：支持上传 PT 文件、查看 PT 详情、显示模型标签、加载状态和显存占用。
+- **模型逻辑管理**：支持管理 Python 推理逻辑，上传 `.py` 文件，并将逻辑绑定到一个或多个 PT 文件。
+- **启动预加载与 warmup**：程序启动时自动加载 `models/` 目录下的 PT 模型并执行 warmup，减少首次推理延迟。
+- **显存/内存指标**：视频监控页面显示显存占用；在 Jetson 这类统一内存设备上会按可用系统接口回退展示共享内存占用。
+- **日志诊断**：服务日志写入 `data/server.log`，支持轮转；推理逻辑中的 `print`、标准错误会重定向到日志。
+- **权限管理**：内置管理员、操作员、只读用户三类角色，按角色限制用户、连接、模型和通道操作。
+- **历史日志**：记录登录、用户管理、连接管理、模型管理、通道操作等关键事件。
 
 ## 快速启动
 
@@ -50,13 +32,13 @@ pip install -r requirements.txt
 启动服务：
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8888
 ```
 
-打开浏览器访问：
+访问后台：
 
 ```text
-http://localhost:8000
+http://localhost:8888
 ```
 
 默认账号：
@@ -66,7 +48,134 @@ http://localhost:8000
 密码：admin123
 ```
 
-首次登录后建议修改默认密码。
+首次部署到设备后建议修改默认密码，并通过环境变量设置 `SESSION_SECRET`。
+
+## 目录结构
+
+- `app/`：FastAPI 后端、配置、数据存储、鉴权、模型注册表和视频流 worker。
+- `app/func/`：Python 模型逻辑目录，`model_*.py` 文件会作为可绑定的推理逻辑使用。
+- `app/models/`：模型适配层，包括 YOLO 检测、人员裁剪分类、函数逻辑适配和注册表。
+- `app/streams/`：通道 worker、连接探测、RTSP 推流。
+- `models/`：运行时 PT 权重目录。
+- `data/`：运行时数据和日志，例如 `data/state.json`、`data/server.log`。
+- `static/`：前端交互脚本和样式。
+- `templates/`：后台管理页面模板。
+
+## 模型管理流程
+
+模型管理分为两类资源：PT 文件和模型逻辑。
+
+### PT 文件管理
+
+PT 文件是模型权重文件，保存在 `models/` 目录。页面支持：
+
+- 上传 `.pt` 权重文件。
+- 查看文件大小、更新时间、加载状态和显存占用。
+- 点击“查看”打开详情弹窗，显示设备、warmup 状态、显存占用和标签 ID/名称列表。
+- 程序启动时自动加载并 warmup 已存在的 PT 文件。
+
+PT 文件通常较大，属于部署产物，不提交到 Git。仓库已通过 `.gitignore` 忽略：
+
+```text
+models/*.pt
+```
+
+### 模型逻辑管理
+
+模型逻辑是 Python 程序，默认位于 `app/func/`。其中以 `model_` 开头的文件用于封装业务推理流程，例如：
+
+- `app/func/model_unhat.py`：未戴安全帽检测逻辑。
+- `app/func/model_unvest.py`：未穿反光衣检测逻辑。
+- `app/func/model_smoke.py`：吸烟检测逻辑。
+- `app/func/model_phone.py`：玩手机检测逻辑。
+
+模型逻辑可以绑定一个或多个 PT 文件。通道运行时输入视频帧会调用这些 Python 逻辑，逻辑返回标注后的图像和检测/报警信息，页面和 RTSP 输出使用标注后的结果。
+
+函数逻辑模型使用入口：
+
+```text
+app.model_functions:build_func_model
+```
+
+配置示例：
+
+```json
+{
+  "model_path": "human_hat_cls_v4_bestm.pt",
+  "logic_module": "app.func.model_unhat",
+  "logic_function": "unhat",
+  "conf": 0.25,
+  "model_bindings": {
+    "human_model": "05person_best11m.pt",
+    "unhat_cls_model": "human_hat_cls_v4_bestm.pt"
+  },
+  "logic_kwargs": {}
+}
+```
+
+说明：
+
+- `logic_module` 是 Python 模块路径。
+- `logic_function` 是要调用的函数名；为空时系统会自动从模块中探测可调用函数。
+- `model_bindings` 的 key 必须和函数参数名一致，value 是 `models/` 目录下的 PT 文件名。
+- `logic_kwargs` 会作为额外关键字参数传给模型逻辑。
+- `conf` 或 `conf_threshold` 会作为置信度阈值传入。
+
+模型逻辑函数推荐签名：
+
+```python
+from PIL import Image
+from ultralytics import YOLO
+
+def unhat(
+    image: Image.Image,
+    conf_threshold: float = 0.25,
+    human_model: YOLO | None = None,
+    unhat_cls_model: YOLO | None = None,
+):
+    ...
+    return annotated_image, detections
+```
+
+返回值支持：
+
+- `(annotated_image, detections)`：推荐形式。
+- `annotated_image`：只返回标注图像。
+- `detections`：只返回检测结果，系统会保留原图。
+
+检测结果可以是 dict、Pydantic 模型或普通对象。常用字段包括：
+
+- `box`：`[x1, y1, x2, y2]`
+- `label`：标签名称。
+- `conf`：置信度。
+- `violation`：是否违规。
+- `viol_content`：报警内容。
+- `viol_color`：报警框颜色，RGB 格式。
+
+## 视频通道流程
+
+1. 在“连接列表”中新增 RTSP、文件或 USB 连接。
+2. 点击“测试”验证连接可用性；RTSP 会优先走快速 ffprobe。
+3. 在“视频监控”中选择连接和模型。
+4. 模型可选择“无模型”，此时只预览原始视频。
+5. 点击“启动”后，通道 worker 打开视频源，读取帧，调用模型逻辑，写入浏览器 MJPEG 预览，并按配置推送 RTSP。
+6. 点击“停止”后，系统会通知推理线程中断、释放摄像头/RTSP 连接、停止 RTSP 推流，并清空 FPS 和帧数。
+
+浏览器预览地址：
+
+```text
+/api/video/{stream_id}
+```
+
+通道状态只在视频监控页面轮询，其他页面不会持续请求通道快照。
+
+## 连接地址填写规则
+
+- **RTSP**：填写完整 RTSP 地址，例如 `rtsp://user:pass@192.168.1.20:8554/camera`。
+- **文件**：填写服务器本机可访问的视频文件绝对路径或相对路径，例如 `/data/test.mp4`。
+- **USB**：填写摄像头编号，例如 `0`、`1`。
+
+注意：浏览器运行在本机或其他电脑上时，“文件”类型填写的是服务端设备上的路径，不是浏览器电脑上的路径。
 
 ## RTSP 输出
 
@@ -76,74 +185,95 @@ http://localhost:8000
 ENABLE_RTSP_PUSH=1
 MEDIAMTX_HOST=127.0.0.1
 MEDIAMTX_PORT=8554
-RTSP_PUBLIC_HOST=10.9.160.110
+RTSP_PUBLIC_HOST=192.168.1.100
 ```
 
 说明：
 
-- `MEDIAMTX_HOST` 是 FFmpeg 推流到 MediaMTX 的地址。MediaMTX 和本程序在同一台盒子上时，建议保持 `127.0.0.1`。
-- `RTSP_PUBLIC_HOST` 是其他机器访问 RTSP 时使用的盒子 IP，例如 `10.9.160.110`。不设置时，程序会自动探测本机局域网 IP。
+- `ENABLE_RTSP_PUSH=1` 后通道启动时才会推 RTSP。
+- `MEDIAMTX_HOST` 是 FFmpeg 推送到 MediaMTX 的地址。MediaMTX 和本程序在同一台设备上时建议使用 `127.0.0.1`。
+- `RTSP_PUBLIC_HOST` 是其他机器访问 RTSP 时看到的设备 IP。不设置时程序会自动探测局域网 IP。
 - `MEDIAMTX_PORT` 默认是 `8554`。
 
-每个运行中的通道会推送到：
-
-- `rtsp://<host>:8554/stream/1`
-- `rtsp://<host>:8554/stream/2`
-- `rtsp://<host>:8554/stream/3`
-- `rtsp://<host>:8554/stream/4`
-
-例如盒子 IP 是 `10.9.160.110`，第一路通道的播放地址是：
+通道输出地址：
 
 ```text
-rtsp://10.9.160.110:8554/stream/1
+rtsp://<RTSP_PUBLIC_HOST>:8554/stream/1
+rtsp://<RTSP_PUBLIC_HOST>:8554/stream/2
+rtsp://<RTSP_PUBLIC_HOST>:8554/stream/3
+rtsp://<RTSP_PUBLIC_HOST>:8554/stream/4
 ```
 
-如果其他机器打不开，请按顺序检查：
+排查顺序：
 
-1. MediaMTX 是否已启动，并监听 `0.0.0.0:8554` 或盒子内网 IP。
-2. 本程序启动前是否设置了 `ENABLE_RTSP_PUSH=1`。
-3. 对应视频通道是否已经在后台页面点击“启动”。
-4. 盒子防火墙是否放行 TCP 8554。
-5. 在盒子本机执行 `ffprobe rtsp://127.0.0.1:8554/stream/1` 是否能拉到流。
+1. MediaMTX 是否启动并监听对应端口。
+2. 服务启动前是否设置 `ENABLE_RTSP_PUSH=1`。
+3. 通道是否已启动并持续有帧。
+4. 防火墙是否放行 TCP 8554。
+5. 在设备本机执行 `ffprobe rtsp://127.0.0.1:8554/stream/1` 是否能拉到流。
 
-## 目录说明
+## 日志
 
-- `app/`：FastAPI 后端、推理模块、视频流 worker。
-- `models/`：默认 YOLO 权重文件。
-- `templates/`：后台管理页面模板。
-- `static/`：前端样式和交互脚本。
-- `data/`：运行时状态数据，默认不提交到 Git。
+服务日志默认写入：
 
-## 版本更新日志
+```text
+data/server.log
+```
 
-### v0.4.0
+日志使用轮转文件，默认单文件 10 MB，保留 5 个备份。推理逻辑中的 `print` 会被重定向到日志，避免在终端和画面上混杂输出。
 
-- 视频监控卡片的浏览器预览区域改为固定比例和固定高度范围，不再随摄像头原始分辨率撑开或压缩布局。
-- RTSP 输出继续保持摄像头原始分辨率推流，不受浏览器预览尺寸影响。
-- 新增通道扩展能力，管理员可在视频监控页面动态增加通道数量。
-- 连接配置的默认通道支持选择新增后的通道编号。
+常见日志内容：
 
-### v0.3.0
+- 程序启动时 PT 模型预加载和 warmup 结果。
+- 连接测试开始、ffprobe 耗时、状态写入耗时、总耗时。
+- 通道启动、停止、打开视频源、读取帧、推理、发布 RTSP 等阶段。
+- MJPEG 浏览器预览打开、关闭、空帧等待。
+- 前端上报的视频布局和错误事件。
 
-- 新增历史日志页面，记录登录、用户管理、连接管理、模型函数管理、视频通道操作等关键事件。
-- 连接测试增加超时处理，摄像头关闭或 RTSP 不通时会在几秒内返回失败提示。
-- RTSP 配置拆分为推流地址和对外播放地址，支持 `RTSP_PUBLIC_HOST`。
+可用环境变量：
 
-### v0.2.0
+```bash
+LOG_MAX_BYTES=10485760
+LOG_BACKUP_COUNT=5
+LOG_TO_CONSOLE=0
+ACCESS_LOG_ENABLED=0
+```
 
-- 模型管理升级为模型函数管理，不再只管理 `.pt` 文件。
-- 支持模型函数增删改查。
-- 支持上传替换 `.pt` 权重文件。
-- 支持上传替换 Python 推理逻辑代码。
-- 支持安全帽、反光衣等多阶段推理流程封装。
+`ACCESS_LOG_ENABLED=0` 时会关闭 uvicorn access log，避免 `/api/snapshot` 等轮询请求刷屏。
 
-### v0.1.0
+## 环境变量
 
-- 初始化 FastAPI 视频推理管控平台。
-- 支持 4 路视频通道并行管理。
-- 支持连接列表、用户管理、浏览器预览和 RTSP 输出。
-- 内置默认 YOLO 检测/分类模型配置。
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SESSION_SECRET` | `change-me-on-device` | 登录会话签名密钥，部署时建议修改 |
+| `ENABLE_RTSP_PUSH` | `0` | 是否启用 RTSP 输出 |
+| `MEDIAMTX_HOST` | `127.0.0.1` | FFmpeg 推送 MediaMTX 的地址 |
+| `MEDIAMTX_PORT` | `8554` | MediaMTX 端口 |
+| `RTSP_PUBLIC_HOST` | 自动探测 | 对外展示的 RTSP 访问 IP |
+| `STREAM_COUNT` | `4` | 初始通道数量 |
+| `FRAME_WIDTH` | `1280` | RTSP 输出宽度 |
+| `FRAME_HEIGHT` | `720` | RTSP 输出高度 |
+| `FRAME_FPS` | `20` | 默认输出帧率 |
+| `INFERENCE_TIMEOUT_SECONDS` | `15` | 单帧推理超时时间 |
+| `CAPTURE_OPEN_TIMEOUT_MS` | `5000` | OpenCV 打开视频源超时 |
+| `CAPTURE_READ_TIMEOUT_MS` | `5000` | OpenCV 读取帧超时 |
+| `CONNECTION_TEST_TIMEOUT_MS` | `15000` | 连接测试总超时 |
+| `LOG_MAX_BYTES` | `10485760` | 单个日志文件最大字节数 |
+| `LOG_BACKUP_COUNT` | `5` | 日志轮转备份数量 |
+| `LOG_TO_CONSOLE` | `0` | 是否同时输出到控制台 |
+| `ACCESS_LOG_ENABLED` | `0` | 是否启用 uvicorn access log |
 
-## 备注
+## 角色权限
 
-上传的模型函数代码会保存到 `app/user_functions/`，上传的权重文件会保存到 `models/`。如果正在运行的视频通道使用了某个模型函数，删除或替换前建议先停止相关通道。
+- **管理员**：可管理用户、连接、模型、通道和系统设置。
+- **操作员**：可管理连接和视频通道。
+- **只读用户**：只能查看监控、连接、模型和日志。
+
+## 更新日志
+
+完整版本记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 作者信息
+
+- 作者：Pyrrhus
+- 邮箱：zhangxuefeng@batonsoft.com
