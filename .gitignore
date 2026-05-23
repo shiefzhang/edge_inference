@@ -4,5 +4,6 @@ __pycache__/
 data/
 runs/
 generated_icons/
+models/*.pt
 app/user_functions/*.py
 !app/user_functions/__init__.py

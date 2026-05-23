@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 import logging
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -15,6 +16,14 @@ from app.streams.drawing import draw_result, encode_jpeg
 from app.streams.rtsp import RtspPublisher
 
 MAX_RTSP_FPS = 60
+OPENCV_FFMPEG_CAPTURE_OPTIONS = (
+    "rtsp_transport;tcp|"
+    "stimeout;3000000|"
+    "rw_timeout;3000000|"
+    "max_delay;500000|"
+    "probesize;32768|"
+    "analyzeduration;500000"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -133,6 +142,9 @@ class StreamWorker:
     def _run(self, source: str, rtsp_enabled: bool, stop_event: threading.Event, generation: int) -> None:
         settings = get_settings()
         capture_source = int(source) if source.isdigit() else source
+        if _is_network_source(source):
+            existing_options = os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", OPENCV_FFMPEG_CAPTURE_OPTIONS)
+            logger.info("stream %s capture ffmpeg options source=%s options=%s", self.stream_id, source, existing_options)
         cap = cv2.VideoCapture()
         self._set_stage("capture_opening", generation)
         logger.info("stream %s opening capture generation=%s source=%s", self.stream_id, generation, source)
@@ -298,3 +310,7 @@ class StreamWorker:
         cv2.rectangle(output, (0, 0), (output.shape[1], 44), (0, 0, 180), -1)
         cv2.putText(output, text, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
         return output
+
+
+def _is_network_source(source: str) -> bool:
+    return source.lower().startswith(("rtsp://", "rtmp://", "http://", "https://"))
