@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Edge Inference</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260523-video-absolute-contain">
+    <link rel="stylesheet" href="/static/styles.css?v=20260524-disabled-logic-row">
   </head>
   <body>
     <div class="shell theme-monitor">
@@ -13,12 +13,30 @@
           <div class="brand">Edge Inference</div>
           <button id="toggle-sidebar" class="sidebar-toggle" type="button" title="收起侧边栏">‹</button>
         </div>
-        <button class="nav active" data-view="monitor" data-short="视">视频监控</button>
-        <button class="nav" data-view="connections" data-short="连">连接列表</button>
-        <button class="nav" data-view="models" data-short="模">模型管理</button>
-        <button class="nav" data-view="users" data-short="用">用户管理</button>
-        <button class="nav" data-view="logs" data-short="日">历史日志</button>
-        <button class="nav" data-view="settings" data-short="设">系统设置</button>
+        <button class="nav active" data-view="monitor" title="视频监控">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h8A2.5 2.5 0 0 1 17 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16.5z"/><path d="m17 10 4-2.5v9L17 14"/><path d="M8 9h4"/></svg></span>
+          <span class="nav-label">视频监控</span>
+        </button>
+        <button class="nav" data-view="connections" title="连接列表">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12h8"/><path d="M7 8h10a4 4 0 0 1 0 8H7a4 4 0 0 1 0-8z"/><path d="M9 16h6"/></svg></span>
+          <span class="nav-label">连接列表</span>
+        </button>
+        <button class="nav" data-view="models" title="模型管理">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 7.25 12 11.5l7.5-4.25z"/><path d="M4.5 12 12 16.25 19.5 12"/><path d="M4.5 16.75 12 21l7.5-4.25"/></svg></span>
+          <span class="nav-label">模型管理</span>
+        </button>
+        <button class="nav" data-view="users" title="用户管理">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 19a4 4 0 0 0-8 0"/><circle cx="12" cy="8" r="3"/><path d="M19 18a3 3 0 0 0-2.25-2.9"/><path d="M17 5.2a2.5 2.5 0 0 1 0 4.6"/></svg></span>
+          <span class="nav-label">用户管理</span>
+        </button>
+        <button class="nav" data-view="logs" title="历史日志">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M14 4v4h4"/><path d="M9 12h6"/><path d="M9 16h6"/></svg></span>
+          <span class="nav-label">历史日志</span>
+        </button>
+        <button class="nav" data-view="settings" title="系统设置">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z"/><path d="M19 12a7.3 7.3 0 0 0-.08-1l2-1.55-2-3.46-2.36.95a7 7 0 0 0-1.74-1L14.5 3h-5l-.32 2.94a7 7 0 0 0-1.74 1L5.08 6l-2 3.46 2 1.55a7.3 7.3 0 0 0 0 2l-2 1.55 2 3.46 2.36-.95a7 7 0 0 0 1.74 1L9.5 21h5l.32-2.94a7 7 0 0 0 1.74-1l2.36.95 2-3.46-2-1.55c.05-.33.08-.66.08-1z"/></svg></span>
+          <span class="nav-label">系统设置</span>
+        </button>
       </aside>
       <main class="content">
         <header class="topbar">
@@ -65,14 +83,15 @@
           <div class="model-management-grid">
             <div class="model-panel">
               <div class="section-head">
-                <h2>PT 文件管理</h2>
-                <button id="upload-model-file" type="button">上传 PT</button>
+                <h2>模型文件管理</h2>
+                <label class="inline-control model-type-control"><span>模型类型</span><select id="model-type-select"><option value="pt">PT</option><option value="onnx">ONNX</option></select></label>
+                <button id="upload-model-file" type="button">上传模型</button>
               </div>
               <table class="model-file-table">
                 <thead><tr><th>文件名</th><th>大小</th><th>显存占用</th><th>更新时间</th><th>操作</th></tr></thead>
                 <tbody id="model-file-rows"></tbody>
               </table>
-              <input id="model-file-input" type="file" accept=".pt" hidden>
+              <input id="model-file-input" type="file" accept=".pt,.onnx" hidden>
             </div>
             <div class="model-panel">
               <div class="section-head">
@@ -167,6 +186,6 @@
     </dialog>
 
     <script>window.CURRENT_ROLE = "{{ user.role.value }}";</script>
-    <script src="/static/app.js?v=20260523-video-absolute-contain"></script>
+    <script src="/static/app.js?v=20260524-disabled-logic-row"></script>
   </body>
 </html>

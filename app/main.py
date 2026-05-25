@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import router as api_router
 from app.config import get_settings
 from app.models.registry import ModelRegistry
+from app.model_paths import model_dir, model_extension
 from app.pt_model_cache import get_pt_model_cache
 from app.store import JsonStore
 from app.streams.manager import StreamManager
@@ -16,6 +17,14 @@ from app.web import router as web_router
 
 settings = get_settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
+
+
+class ConsoleOpsFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.name == "app.ops"
+
+
+console_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
 log_handlers: list[logging.Handler] = [
     RotatingFileHandler(
         settings.data_dir / "server.log",
@@ -25,7 +34,10 @@ log_handlers: list[logging.Handler] = [
     )
 ]
 if settings.log_to_console:
-    log_handlers.append(logging.StreamHandler())
+    console_handler = logging.StreamHandler()
+    console_handler.addFilter(ConsoleOpsFilter())
+    console_handler.setFormatter(console_formatter)
+    log_handlers.append(console_handler)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,9 +51,15 @@ logging.getLogger("uvicorn.access").disabled = not settings.access_log_enabled
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.store = JsonStore()
-    app.state.pt_models = get_pt_model_cache(settings.models_dir)
-    app.state.pt_models.preload_all()
-    app.state.registry = ModelRegistry(app.state.store.list_model_functions(), settings.models_dir)
+    model_type = app.state.store.get_model_type()
+    active_models_dir = model_dir(settings, model_type)
+    active_extension = model_extension(model_type)
+    app.state.model_type = model_type
+    app.state.models_dir = active_models_dir
+    app.state.model_extension = active_extension
+    app.state.pt_models = get_pt_model_cache(active_models_dir, active_extension)
+    app.state.registry = ModelRegistry(app.state.store.list_model_functions(), active_models_dir)
+    app.state.registry.preload_all()
     app.state.streams = StreamManager(app.state.registry, app.state.store.get_stream_count())
     yield
     app.state.streams.close()

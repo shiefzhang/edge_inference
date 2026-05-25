@@ -5,5 +5,9 @@ data/
 runs/
 generated_icons/
 models/*.pt
+models/**/*.pt
+models/**/*.onnx
+models/pt/*.pt
+models/onnx/*.onnx
 app/user_functions/*.py
 !app/user_functions/__init__.py

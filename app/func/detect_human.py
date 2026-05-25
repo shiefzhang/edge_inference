@@ -47,6 +47,7 @@ def detect_human(image: Image.Image, conf_threshold: float = 0.25,human_model: Y
     human_results = human_model.track(
         img_array,
         persist=True,
+        tracker="bytetrack.yaml",
         # classes=[human_idx, unhat_idx, unvest_idx, phone_idx, smoke_idx, human_unclear_idx, vest_idx, hat_idx],
         classes=[human_idx, human_unclear_idx],
         conf=conf_threshold,

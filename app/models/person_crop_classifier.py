@@ -14,8 +14,9 @@ os.environ.setdefault("YOLO_CONFIG_DIR", str(_ultralytics_dir))
 from ultralytics import YOLO
 
 from app.models.base import BLUE, GRAY, RED, BaseInferenceModule, InferenceBox, InferenceResult, ModelMetadata
+from app.model_paths import model_extension
 from app.models.yolo_detector import YoloDetectorModule
-from app.pt_model_cache import get_pt_model_cache
+from app.pt_model_cache import get_pt_model_cache, yolo_predict_kwargs
 
 
 class PersonCropClassifierModule(BaseInferenceModule):
@@ -51,7 +52,7 @@ class PersonCropClassifierModule(BaseInferenceModule):
         self.person_detector.load()
         with self._lock:
             if self._model is None:
-                self._model = get_pt_model_cache(self.model_path.parent).get(self.model_path)
+                self._model = get_pt_model_cache(self.model_path.parent, model_extension(self.model_path.suffix.lstrip("."))).get(self.model_path, task="classify")
                 self.metadata.labels = dict(self._model.names)
 
     def infer(self, frame: np.ndarray) -> InferenceResult:
@@ -65,7 +66,7 @@ class PersonCropClassifierModule(BaseInferenceModule):
                 continue
             crop = frame[y1:y2, x1:x2]
             with self._lock:
-                predictions = self._model.predict(crop, conf=self.conf, verbose=False)
+                predictions = self._model.predict(crop, conf=self.conf, verbose=False, **yolo_predict_kwargs(self._model))
             label, score = self._top_class(predictions)
             color = self._label_color(label)
             text = f"{person.label} {label} {score:.2f}"

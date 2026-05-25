@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import importlib
 import importlib.util
+import logging
 import sys
 import threading
 import time
@@ -67,6 +68,13 @@ class ModelRegistry:
     def load_all(self) -> None:
         for module in self.modules.values():
             module.load()
+
+    def preload_all(self) -> None:
+        for model_id, module in self.modules.items():
+            try:
+                module.load()
+            except Exception:
+                logging.getLogger(__name__).exception("failed to preload model function %s", model_id)
 
     def list_models(self) -> List[ModelInfo]:
         return [ModelInfo(**module.metadata.__dict__) for module in self.modules.values()]

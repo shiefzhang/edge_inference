@@ -32,6 +32,8 @@ class Settings(BaseModel):
     base_dir: Path = Path(__file__).resolve().parent.parent
     data_dir: Path = Path(__file__).resolve().parent.parent / "data"
     models_dir: Path = Path(__file__).resolve().parent.parent / "models"
+    pt_models_dir: Path = Path(__file__).resolve().parent.parent / "models" / "pt"
+    onnx_models_dir: Path = Path(__file__).resolve().parent.parent / "models" / "onnx"
     model_logic_dir: Path = Path(__file__).resolve().parent / "func"
     user_functions_dir: Path = Path(__file__).resolve().parent / "user_functions"
     session_secret: str = os.getenv("SESSION_SECRET", "change-me-on-device")
@@ -47,9 +49,13 @@ class Settings(BaseModel):
     capture_open_timeout_ms: int = int(os.getenv("CAPTURE_OPEN_TIMEOUT_MS", "5000"))
     capture_read_timeout_ms: int = int(os.getenv("CAPTURE_READ_TIMEOUT_MS", "5000"))
     connection_test_timeout_ms: int = int(os.getenv("CONNECTION_TEST_TIMEOUT_MS", "15000"))
+    stream_perf_log_interval_seconds: float = float(os.getenv("STREAM_PERF_LOG_INTERVAL_SECONDS", "5"))
+    stream_slow_frame_ms: float = float(os.getenv("STREAM_SLOW_FRAME_MS", "200"))
+    capture_buffer_size: int = int(os.getenv("CAPTURE_BUFFER_SIZE", "1"))
+    mjpeg_frame_interval_ms: int = int(os.getenv("MJPEG_FRAME_INTERVAL_MS", "40"))
     log_max_bytes: int = int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024)))
     log_backup_count: int = int(os.getenv("LOG_BACKUP_COUNT", "5"))
-    log_to_console: bool = os.getenv("LOG_TO_CONSOLE", "0") == "1"
+    log_to_console: bool = os.getenv("LOG_TO_CONSOLE", "1") == "1"
     access_log_enabled: bool = os.getenv("ACCESS_LOG_ENABLED", "0") == "1"
 
 
@@ -58,6 +64,8 @@ def get_settings() -> Settings:
     settings = Settings()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.models_dir.mkdir(parents=True, exist_ok=True)
+    settings.pt_models_dir.mkdir(parents=True, exist_ok=True)
+    settings.onnx_models_dir.mkdir(parents=True, exist_ok=True)
     settings.model_logic_dir.mkdir(parents=True, exist_ok=True)
     settings.user_functions_dir.mkdir(parents=True, exist_ok=True)
     return settings

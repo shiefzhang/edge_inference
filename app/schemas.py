@@ -92,6 +92,10 @@ class ModelFileOut(BaseModel):
     memory_reserved_mb: int = 0
 
 
+class ModelTypeIn(BaseModel):
+    model_type: str = Field(pattern=r"^(pt|onnx)$")
+
+
 class ModelLabelOut(BaseModel):
     id: int
     name: str
@@ -145,6 +149,7 @@ class AppSnapshot(BaseModel):
     models: List[ModelInfo]
     model_files: List[ModelFileOut]
     model_functions: List[ModelFunctionOut]
+    model_type: str = "pt"
     history_logs: List[HistoryLogOut]
     streams: List[StreamStatus]
     memory: MemoryStatus

@@ -1,4 +1,4 @@
-const state = { models: [], model_files: [], model_functions: [], connections: [], users: [], history_logs: [], streams: [], memory: null };
+const state = { models: [], model_files: [], model_functions: [], model_type: "pt", connections: [], users: [], history_logs: [], streams: [], memory: null };
 const streamDrafts = {};
 const streamVideoTokens = {};
 let streamControlFocused = false;
@@ -162,8 +162,12 @@ function renderStreams() {
     if (!stream.running) delete streamVideoTokens[stream.id];
     const videoSrc = `/api/video/${stream.id}?run=${encodeURIComponent(streamVideoTokens[stream.id] || "")}`;
     const draft = streamDrafts[stream.id] || {};
-    const selectedConnection = stream.connection_id || draft.connection_id || state.connections[0]?.id || "";
-    const selectedModel = stream.model_id ?? draft.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "";
+    const selectedConnection = stream.running
+      ? (stream.connection_id || draft.connection_id || state.connections[0]?.id || "")
+      : (draft.connection_id || stream.connection_id || state.connections[0]?.id || "");
+    const selectedModel = stream.running
+      ? (stream.model_id ?? draft.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "")
+      : (draft.model_id ?? stream.model_id ?? state.connections.find((c) => c.id === selectedConnection)?.default_model_id ?? "");
     const configDisabled = streamControlIsLocked(stream) ? "disabled" : "";
     const startDisabled = canOperate && !stream.running ? "" : "disabled";
     const stopDisabled = canOperate && stream.running ? "" : "disabled";
@@ -216,6 +220,8 @@ async function handleStreamButton(button) {
     if (action === "start") {
       const connectionId = card.querySelector(".stream-connection").value;
       const modelId = card.querySelector(".stream-model").value;
+      streamDrafts[streamId] = { connection_id: connectionId, model_id: modelId };
+      postClientLog("stream_start_submit", { stream: streamId, connection_id: connectionId, model_id: modelId || "none" });
       await api(`/api/streams/${streamId}/start`, { method: "POST", body: JSON.stringify({ connection_id: connectionId, model_id: modelId, rtsp_enabled: true }) });
       streamVideoTokens[streamId] = `${Date.now()}-start`;
       await refresh({ forceRender: true });
@@ -228,6 +234,10 @@ async function handleStreamButton(button) {
       card.querySelector(".stream-status").classList.remove("running");
       await api(`/api/streams/${streamId}/stop`, { method: "POST", body: "{}" });
       delete streamVideoTokens[streamId];
+      streamDrafts[streamId] = {
+        connection_id: card.querySelector(".stream-connection")?.value || streamDrafts[streamId]?.connection_id || "",
+        model_id: card.querySelector(".stream-model")?.value ?? streamDrafts[streamId]?.model_id ?? "",
+      };
       await refresh({ forceRender: true });
       scheduleResourceRefresh();
       return;
@@ -327,6 +337,12 @@ function renderConnections() {
 }
 
 function renderModelFiles() {
+  const select = byId("model-type-select");
+  if (select && select.value !== state.model_type) select.value = state.model_type || "pt";
+  const uploadInput = byId("model-file-input");
+  if (uploadInput) uploadInput.accept = state.model_type === "onnx" ? ".onnx" : ".pt";
+  const uploadButton = byId("upload-model-file");
+  if (uploadButton) uploadButton.textContent = "上传模型";
   const rows = byId("model-file-rows");
   if (!rows) return;
   rows.innerHTML = state.model_files.map((file) => `
@@ -365,7 +381,7 @@ function renderModelFunctions() {
   const rows = byId("model-function-rows");
   if (!rows) return;
   rows.innerHTML = state.model_functions.map((m) => `
-    <tr>
+    <tr class="${m.enabled ? "" : "is-disabled"}">
       <td class="cell-id" title="${m.id}">${m.id}</td>
       <td class="cell-name" title="${m.name}">${m.name}</td>
       <td class="cell-task">${m.task}</td>
@@ -374,11 +390,7 @@ function renderModelFunctions() {
       <td class="cell-status">${m.enabled ? "启用" : "禁用"}</td>
       <td class="actions">
         <button class="ghost" data-action="edit-model-function" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>编辑</button>
-        <button class="ghost" data-action="upload-pt" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>上传PT</button>
-        <button class="ghost" data-action="upload-code" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>上传代码</button>
         <button class="danger" data-action="delete-model-function" data-id="${m.id}" ${canAdmin ? "" : "disabled"}>删除</button>
-        <input class="upload-input" data-kind="pt" data-id="${m.id}" type="file" accept=".pt" hidden>
-        <input class="upload-input" data-kind="code" data-id="${m.id}" type="file" accept=".py" hidden>
       </td>
     </tr>
   `).join("");
@@ -528,6 +540,8 @@ document.body.addEventListener("click", async (event) => {
       const card = target.closest(".stream-card");
       const connectionId = card.querySelector(".stream-connection").value;
       const modelId = card.querySelector(".stream-model").value;
+      streamDrafts[id] = { connection_id: connectionId, model_id: modelId };
+      postClientLog("stream_start_submit", { stream: id, connection_id: connectionId, model_id: modelId || "none" });
       document.activeElement?.blur();
       target.disabled = true;
       streamControlFocused = false;
@@ -594,33 +608,9 @@ document.body.addEventListener("click", async (event) => {
         target.textContent = originalText || "查看";
       }
     }
-    if (action === "upload-pt") target.parentElement.querySelector(`input[data-kind="pt"][data-id="${target.dataset.id}"]`)?.click();
-    if (action === "upload-code") target.parentElement.querySelector(`input[data-kind="code"][data-id="${target.dataset.id}"]`)?.click();
     if (action === "delete-model-function" && confirm("删除该模型函数？")) await api(`/api/model-functions/${target.dataset.id}`, { method: "DELETE" });
     if (action) await refresh();
   } catch (err) {
-    alert(err.message);
-  }
-});
-
-document.body.addEventListener("change", async (event) => {
-  if (!event.target.classList.contains("upload-input")) return;
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const kind = event.target.dataset.kind;
-  const id = event.target.dataset.id;
-  try {
-    if (kind === "pt") {
-      await upload(`/api/model-functions/${id}/upload-pt`, "file", file);
-      alert("PT权重文件上传并替换成功");
-    } else {
-      await upload(`/api/model-functions/${id}/upload-code`, "file", file);
-      alert("Python逻辑代码上传并替换成功");
-    }
-    event.target.value = "";
-    await refresh();
-  } catch (err) {
-    event.target.value = "";
     alert(err.message);
   }
 });
@@ -675,6 +665,7 @@ byId("model-file-input")?.addEventListener("change", async (event) => {
   if (!file) return;
   try {
     await upload("/api/model-files", "file", file);
+    alert(`${state.model_type === "onnx" ? "ONNX" : "PT"}模型上传成功`);
     event.target.value = "";
     await refresh();
   } catch (err) {
@@ -683,6 +674,19 @@ byId("model-file-input")?.addEventListener("change", async (event) => {
   }
 });
 byId("refresh-logs")?.addEventListener("click", refresh);
+byId("model-type-select")?.addEventListener("change", async (event) => {
+  const modelType = event.target.value;
+  event.target.disabled = true;
+  try {
+    await api("/api/model-type", { method: "POST", body: JSON.stringify({ model_type: modelType }) });
+    await refresh({ forceRender: true });
+  } catch (err) {
+    alert(err.message);
+    event.target.value = state.model_type || "pt";
+  } finally {
+    event.target.disabled = false;
+  }
+});
 
 function openConnectionDialog(connection = null) {
   const form = byId("connection-form");

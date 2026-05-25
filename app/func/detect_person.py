@@ -35,6 +35,7 @@ def detect_default_person(image: Image.Image, conf_threshold: float = 0.25,defau
     person_results = default_model.track(
         img_array,
         persist=True,
+        tracker="bytetrack.yaml",
         classes=[default_person_idx],
         conf=conf_threshold,
         verbose=False

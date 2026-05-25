@@ -17,7 +17,7 @@ class JsonStore:
         settings = get_settings()
         self.path = path or settings.data_dir / "state.json"
         self._lock = threading.RLock()
-        self._state = {"users": {}, "connections": {}, "model_functions": {}, "history_logs": [], "stream_count": get_settings().stream_count}
+        self._state = {"users": {}, "connections": {}, "model_functions": {}, "history_logs": [], "stream_count": get_settings().stream_count, "model_type": "pt"}
         self._load()
         self._ensure_defaults()
 
@@ -48,6 +48,7 @@ class JsonStore:
             self._state.setdefault("model_functions", {})
             self._state.setdefault("history_logs", [])
             self._state.setdefault("stream_count", get_settings().stream_count)
+            self._state.setdefault("model_type", "pt")
             self._ensure_default_model_functions()
             if not self._state["connections"]:
                 self.create_connection(
@@ -359,6 +360,20 @@ class JsonStore:
             self._state["stream_count"] = max(1, int(count))
             self._save()
             return self._state["stream_count"]
+
+    def get_model_type(self) -> str:
+        with self._lock:
+            model_type = str(self._state.get("model_type") or "pt").lower()
+            return model_type if model_type in {"pt", "onnx"} else "pt"
+
+    def set_model_type(self, model_type: str) -> str:
+        normalized = model_type.lower()
+        if normalized not in {"pt", "onnx"}:
+            raise ValueError("model type must be pt or onnx")
+        with self._lock:
+            self._state["model_type"] = normalized
+            self._save()
+            return normalized
 
     @staticmethod
     def _user_out(user: Dict) -> UserOut:

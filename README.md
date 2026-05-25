@@ -235,7 +235,7 @@ data/server.log
 ```bash
 LOG_MAX_BYTES=10485760
 LOG_BACKUP_COUNT=5
-LOG_TO_CONSOLE=0
+LOG_TO_CONSOLE=1
 ACCESS_LOG_ENABLED=0
 ```
 
@@ -260,7 +260,7 @@ ACCESS_LOG_ENABLED=0
 | `CONNECTION_TEST_TIMEOUT_MS` | `15000` | 连接测试总超时 |
 | `LOG_MAX_BYTES` | `10485760` | 单个日志文件最大字节数 |
 | `LOG_BACKUP_COUNT` | `5` | 日志轮转备份数量 |
-| `LOG_TO_CONSOLE` | `0` | 是否同时输出到控制台 |
+| `LOG_TO_CONSOLE` | `1` | 是否同时输出到控制台 |
 | `ACCESS_LOG_ENABLED` | `0` | 是否启用 uvicorn access log |
 
 ## 角色权限

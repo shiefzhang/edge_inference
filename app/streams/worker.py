@@ -4,6 +4,7 @@ import threading
 import time
 import logging
 import os
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -18,9 +19,11 @@ from app.streams.rtsp import RtspPublisher
 MAX_RTSP_FPS = 60
 OPENCV_FFMPEG_CAPTURE_OPTIONS = (
     "rtsp_transport;tcp|"
+    "fflags;nobuffer|"
+    "flags;low_delay|"
     "stimeout;3000000|"
     "rw_timeout;3000000|"
-    "max_delay;500000|"
+    "max_delay;100000|"
     "probesize;32768|"
     "analyzeduration;500000"
 )
@@ -148,6 +151,8 @@ class StreamWorker:
         cap = cv2.VideoCapture()
         self._set_stage("capture_opening", generation)
         logger.info("stream %s opening capture generation=%s source=%s", self.stream_id, generation, source)
+        if settings.capture_buffer_size > 0:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, settings.capture_buffer_size)
         cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, settings.capture_open_timeout_ms)
         cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, settings.capture_read_timeout_ms)
         cap.open(capture_source)
@@ -168,6 +173,13 @@ class StreamWorker:
             fps,
             rtsp_enabled,
         )
+        logger.info(
+            "stream %s capture low latency generation=%s buffer_size=%s ffmpeg_options=%s",
+            self.stream_id,
+            generation,
+            settings.capture_buffer_size,
+            os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS", ""),
+        )
         if rtsp_enabled and not stop_event.is_set():
             publisher: Optional[RtspPublisher] = RtspPublisher(self.stream_id, width, height, fps)
             with self._lock:
@@ -187,10 +199,18 @@ class StreamWorker:
         last_tick = time.time()
         last_report = last_tick
         last_frames = 0
+        perf_totals: dict[str, float] = defaultdict(float)
+        perf_max: dict[str, float] = defaultdict(float)
+        perf_samples = 0
         try:
             while not stop_event.is_set():
+                frame_started = time.perf_counter()
+                frame_number = self.state.frames + 1
+                timings: dict[str, float] = {}
                 self._set_stage("capture_read", generation)
+                step_started = time.perf_counter()
                 ok, frame = cap.read()
+                timings["capture_read_ms"] = _elapsed_ms(step_started)
                 if not ok:
                     if stop_event.is_set():
                         break
@@ -201,8 +221,16 @@ class StreamWorker:
                 if model_id:
                     try:
                         self._set_stage(f"inference:{model_id}", generation)
+                        step_started = time.perf_counter()
                         result = self.registry.infer(model_id, frame, timeout=settings.inference_timeout_seconds, stop_event=stop_event)
-                        frame = result.annotated_frame if result.annotated_frame is not None else draw_result(frame, result)
+                        timings["inference_ms"] = _elapsed_ms(step_started)
+                        if result.annotated_frame is not None:
+                            frame = result.annotated_frame
+                            timings["draw_result_ms"] = 0.0
+                        else:
+                            step_started = time.perf_counter()
+                            frame = draw_result(frame, result)
+                            timings["draw_result_ms"] = _elapsed_ms(step_started)
                         with self._lock:
                             self.state.last_error = None
                     except InterruptedError:
@@ -216,11 +244,37 @@ class StreamWorker:
                 if stop_event.is_set():
                     break
                 self._set_stage("encode_jpeg", generation)
+                step_started = time.perf_counter()
                 jpeg = encode_jpeg(frame)
+                timings["encode_jpeg_ms"] = _elapsed_ms(step_started)
+                step_started = time.perf_counter()
                 with self._lock:
                     self._latest_jpeg = jpeg
                     self.state.frames += 1
+                timings["state_update_ms"] = _elapsed_ms(step_started)
                 now = time.time()
+                timings["total_ms"] = _elapsed_ms(frame_started)
+                perf_samples += 1
+                for key, value in timings.items():
+                    perf_totals[key] += value
+                    perf_max[key] = max(perf_max[key], value)
+                if timings["total_ms"] >= settings.stream_slow_frame_ms:
+                    logger.info(
+                        "stream %s slow frame generation=%s frame=%s total_ms=%.2f capture_read_ms=%.2f inference_ms=%.2f draw_result_ms=%.2f encode_jpeg_ms=%.2f state_update_ms=%.2f model=%s jpeg_bytes=%s frame_size=%sx%s",
+                        self.stream_id,
+                        generation,
+                        frame_number,
+                        timings["total_ms"],
+                        timings.get("capture_read_ms", 0.0),
+                        timings.get("inference_ms", 0.0),
+                        timings.get("draw_result_ms", 0.0),
+                        timings.get("encode_jpeg_ms", 0.0),
+                        timings.get("state_update_ms", 0.0),
+                        model_id or "none",
+                        len(jpeg),
+                        frame.shape[1],
+                        frame.shape[0],
+                    )
                 if now - last_tick >= 1.0:
                     with self._lock:
                         self.state.fps = (self.state.frames - last_frames) / (now - last_tick)
@@ -229,18 +283,35 @@ class StreamWorker:
                         current_fps = self.state.fps
                         last_error = self.state.last_error
                     last_tick = now
-                    if now - last_report >= 5:
+                    if now - last_report >= settings.stream_perf_log_interval_seconds:
+                        avg = {key: (perf_totals[key] / perf_samples if perf_samples else 0.0) for key in perf_totals}
                         logger.info(
-                            "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s frame_size=%sx%s last_error=%s",
+                            "stream %s perf generation=%s frames=%s fps=%.2f samples=%s avg_total_ms=%.2f avg_capture_read_ms=%.2f avg_inference_ms=%.2f avg_draw_result_ms=%.2f avg_encode_jpeg_ms=%.2f avg_state_update_ms=%.2f max_total_ms=%.2f max_capture_read_ms=%.2f max_inference_ms=%.2f max_draw_result_ms=%.2f max_encode_jpeg_ms=%.2f max_state_update_ms=%.2f stage=%s frame_size=%sx%s last_error=%s",
                             self.stream_id,
                             generation,
                             current_frames,
                             current_fps,
+                            perf_samples,
+                            avg.get("total_ms", 0.0),
+                            avg.get("capture_read_ms", 0.0),
+                            avg.get("inference_ms", 0.0),
+                            avg.get("draw_result_ms", 0.0),
+                            avg.get("encode_jpeg_ms", 0.0),
+                            avg.get("state_update_ms", 0.0),
+                            perf_max.get("total_ms", 0.0),
+                            perf_max.get("capture_read_ms", 0.0),
+                            perf_max.get("inference_ms", 0.0),
+                            perf_max.get("draw_result_ms", 0.0),
+                            perf_max.get("encode_jpeg_ms", 0.0),
+                            perf_max.get("state_update_ms", 0.0),
                             self._stage,
                             frame.shape[1],
                             frame.shape[0],
                             last_error or "",
                         )
+                        perf_totals.clear()
+                        perf_max.clear()
+                        perf_samples = 0
                         last_report = now
                     logger.debug(
                         "stream %s heartbeat generation=%s frames=%s fps=%.2f stage=%s frame_size=%sx%s last_error=%s",
@@ -257,7 +328,17 @@ class StreamWorker:
                     publisher = self._publisher if generation == self._run_generation else None
                 if publisher:
                     self._set_stage("rtsp_write", generation)
+                    step_started = time.perf_counter()
                     publisher.write(frame)
+                    rtsp_write_ms = _elapsed_ms(step_started)
+                    if rtsp_write_ms >= settings.stream_slow_frame_ms:
+                        logger.info(
+                            "stream %s slow rtsp write generation=%s frame=%s elapsed_ms=%.2f",
+                            self.stream_id,
+                            generation,
+                            frame_number,
+                            rtsp_write_ms,
+                        )
                 self._set_stage("loop_wait", generation)
         except Exception as exc:
             logger.exception("stream %s stopped by worker error", self.stream_id)
@@ -314,3 +395,7 @@ class StreamWorker:
 
 def _is_network_source(source: str) -> bool:
     return source.lower().startswith(("rtsp://", "rtmp://", "http://", "https://"))
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 2)

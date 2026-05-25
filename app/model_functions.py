@@ -7,11 +7,12 @@ from app.models.base import BaseInferenceModule
 from app.models.func_logic import FuncLogicModule
 from app.models.person_crop_classifier import PersonCropClassifierModule
 from app.models.yolo_detector import YoloDetectorModule
+from app.model_paths import config_for_runtime, model_extension
 from app.schemas import ModelFunctionOut
 
 
 def build_yolo_detector(definition: ModelFunctionOut, models_dir: Path, modules: Dict[str, BaseInferenceModule]) -> BaseInferenceModule:
-    config = definition.config
+    config = config_for_runtime(definition.config, model_extension(models_dir.name))
     return YoloDetectorModule(
         model_id=definition.id,
         name=definition.name,
@@ -22,7 +23,7 @@ def build_yolo_detector(definition: ModelFunctionOut, models_dir: Path, modules:
 
 
 def build_person_crop_classifier(definition: ModelFunctionOut, models_dir: Path, modules: Dict[str, BaseInferenceModule]) -> BaseInferenceModule:
-    config = definition.config
+    config = config_for_runtime(definition.config, model_extension(models_dir.name))
     person_detector_id = str(config.get("person_detector_id", "person_detector"))
     person_detector = modules.get(person_detector_id)
     if not isinstance(person_detector, YoloDetectorModule):
@@ -40,7 +41,7 @@ def build_person_crop_classifier(definition: ModelFunctionOut, models_dir: Path,
 
 
 def build_func_model(definition: ModelFunctionOut, models_dir: Path, modules: Dict[str, BaseInferenceModule]) -> BaseInferenceModule:
-    config = definition.config
+    config = config_for_runtime(definition.config, model_extension(models_dir.name))
     logic_module = str(config.get("logic_module") or "")
     if not logic_module:
         raise ValueError("config.logic_module is required for func model logic")

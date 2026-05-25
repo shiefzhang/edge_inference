@@ -23,6 +23,7 @@ from ultralytics import YOLO
 
 from app.config import get_settings
 from app.models.base import BaseInferenceModule, InferenceBox, InferenceResult, ModelMetadata, RED
+from app.model_paths import model_extension
 from app.pt_model_cache import get_pt_model_cache
 
 logger = logging.getLogger(__name__)
@@ -144,7 +145,10 @@ class FuncLogicModule(BaseInferenceModule):
     def _ensure_models(self) -> None:
         for arg_name, model_path in self._model_bindings().items():
             if arg_name not in self._models:
-                self._models[arg_name] = get_pt_model_cache(self.models_dir).get(self.models_dir / model_path)
+                self._models[arg_name] = get_pt_model_cache(self.models_dir, model_extension(Path(model_path).suffix.lstrip("."))).get(
+                    self.models_dir / model_path,
+                    task=self._task_for_model_arg(arg_name),
+                )
         primary = self.config.get("model_path")
         if primary and self.metadata.labels == {}:
             primary_model = next(reversed(self._models.values()), None)
@@ -169,9 +173,13 @@ class FuncLogicModule(BaseInferenceModule):
 
     def _default_aux_models(self) -> Dict[str, str]:
         return {
-            "human_model": str(self.config.get("human_model_path", "05person_best11m.pt")),
-            "default_model": str(self.config.get("default_model_path", "yolo11n.pt")),
+            "human_model": str(self.config.get("human_model_path", "05person_best11m")),
+            "default_model": str(self.config.get("default_model_path", "yolo11n")),
         }
+
+    @staticmethod
+    def _task_for_model_arg(arg_name: str) -> str:
+        return "detect" if arg_name in {"human_model", "default_model"} else "classify"
 
     def _build_call_kwargs(self) -> Dict[str, Any]:
         kwargs = {"conf_threshold": self.conf}
